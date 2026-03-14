@@ -1,0 +1,63 @@
+# Fantasy Team Manager — Postgres + Laravel API (frontend runs on host via npm)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ftm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fantasy_team_manager
+      POSTGRES_USER: fantasy
+      POSTGRES_PASSWORD: fantasy_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fantasy -d fantasy_team_manager"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: ftm-backend
+    working_dir: /var/www
+    volumes:
+      - ./backend:/var/www
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: fantasy_team_manager
+      DB_USERNAME: fantasy
+      DB_PASSWORD: fantasy_secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+      if [ ! -f artisan ]; then
+        echo 'Missing backend/Laravel. Run: docker compose --profile init run --rm composer-init';
+        exit 1;
+      fi;
+      php artisan migrate --force 2>/dev/null || true;
+      php artisan serve --host=0.0.0.0 --port=8000
+      "
+
+  # One-shot: creates ./backend Laravel app if missing (run once)
+  composer-init:
+    image: composer:latest
+    profiles: ["init"]
+    working_dir: /app
+    volumes:
+      - .:/app
+    entrypoint: ["/bin/sh", "/app/docker/composer-init.sh"]
+
+volumes:
+  postgres_data:

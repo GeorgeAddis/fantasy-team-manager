@@ -1,0 +1,62 @@
+.app {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  font-family: system-ui, Segoe UI, sans-serif;
+  color: #e8eaed;
+  background: #0f1419;
+  min-height: 100vh;
+}
+
+.header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.tagline {
+  margin: 0 0 2rem;
+  color: #8b949e;
+  font-size: 0.95rem;
+}
+
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.card h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: #58a6ff;
+}
+
+.card p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ok {
+  color: #3fb950;
+}
+
+.err {
+  color: #f85149;
+}
+
+.commands {
+  margin: 0;
+  padding-left: 1.25rem;
+  line-height: 1.8;
+}
+
+.commands code {
+  font-size: 0.85rem;
+  background: #21262d;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+}
