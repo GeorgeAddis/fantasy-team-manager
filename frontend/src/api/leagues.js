@@ -27,3 +27,11 @@ export function updateLeague(id, body) {
 export function deleteLeague(id) {
   return apiFetch(`${path}/${id}`, { method: 'DELETE' })
 }
+
+/** @returns {Promise<object>} */
+export function updateRosters(leagueId, data) {
+  return apiFetch(`${path}/${leagueId}/update-rosters`, {
+    method: 'POST',
+    body: { data },
+  })
+}

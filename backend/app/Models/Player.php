@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\PlayerPosition;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,18 +10,23 @@ class Player extends Model
 {
     protected $fillable = [
         'name',
+        'alternate_name',
         'irl_franchise_id',
         'week_rank',
+        'week_position_rank',
         'season_rank',
-        'position',
+        'season_position_rank',
+        'positions',
     ];
 
     protected function casts(): array
     {
         return [
-            'position' => PlayerPosition::class,
+            'positions' => 'array',
             'week_rank' => 'integer',
+            'week_position_rank' => 'integer',
             'season_rank' => 'integer',
+            'season_position_rank' => 'integer',
         ];
     }
 

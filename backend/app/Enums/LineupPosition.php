@@ -10,6 +10,7 @@ enum LineupPosition: string
     case WR1 = 'WR1';
     case WR2 = 'WR2';
     case WR3 = 'WR3';
+    case TE = 'TE';
     case RWT = 'RWT';
     case K = 'K';
     case DST = 'DST';

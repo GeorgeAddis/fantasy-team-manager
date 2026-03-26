@@ -13,6 +13,18 @@ class LeagueResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'teams' => $this->whenLoaded('teams', function () {
+                return $this->teams
+                    ->sortBy('id')
+                    ->values()
+                    ->map(fn ($team) => [
+                        'id' => $team->id,
+                        'name' => $team->name,
+                        'league_id' => $team->league_id,
+                        'my_team' => $team->my_team,
+                    ]);
+            }),
+            'teams_updated_at' => $this->teams_updated_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

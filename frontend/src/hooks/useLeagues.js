@@ -47,3 +47,13 @@ export function useDeleteLeague() {
     },
   })
 }
+
+export function useUpdateRosters() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ leagueId, data }) => leaguesApi.updateRosters(leagueId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+    },
+  })
+}

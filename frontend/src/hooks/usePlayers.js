@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as api from '../api/players'
 import { queryKeys } from './queryKeys'
 
-export function usePlayerList(params = {}) {
+export function usePlayerList(params = {}, options = {}) {
   return useQuery({
     queryKey: queryKeys.players.list(params),
     queryFn: () => api.listPlayers(params),
+    enabled: options.enabled !== false,
   })
 }
 
@@ -41,5 +42,33 @@ export function useDeletePlayer() {
   return useMutation({
     mutationFn: (id) => api.deletePlayer(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.players.all }),
+  })
+}
+
+export function usePlayerStats() {
+  return useQuery({
+    queryKey: queryKeys.players.stats,
+    queryFn: () => api.getPlayerStats(),
+  })
+}
+
+export function useImportPlayers() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ file, clearExisting }) => api.importPlayers(file, clearExisting),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.players.all })
+      qc.invalidateQueries({ queryKey: queryKeys.players.stats })
+    },
+  })
+}
+
+export function useImportRankings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ data, type, period }) => api.importRankings(data, type, period),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.players.all })
+    },
   })
 }

@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Card,
+  CircularProgress,
   Chip,
   Divider,
   Stack,
@@ -14,6 +15,7 @@ import {
 import SaveIcon from '@mui/icons-material/Save'
 import DeleteIcon from '@mui/icons-material/Delete'
 import StarIcon from '@mui/icons-material/Star'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import {
   useCreateLeague,
   useUpdateLeague,
@@ -37,10 +39,29 @@ function makeBlankTeams() {
 function isGamtgomt(name) {
   return name.trim().toLowerCase() === 'gamtgomt'
 }
+function buildTeamsFromRecord(recordTeams = []) {
+  const filled = recordTeams.slice(0, TEAM_COUNT).map((t) => ({
+    name: t.name ?? '',
+    my_team: Boolean(t.my_team),
+    _id: t.id ?? null,
+  }))
+
+  while (filled.length < TEAM_COUNT) {
+    filled.push({ name: '', my_team: false, _id: null })
+  }
+
+  const firstMyTeam = filled.findIndex((t) => t.my_team)
+  if (firstMyTeam >= 0) {
+    return filled.map((t, i) => ({ ...t, my_team: i === firstMyTeam }))
+  }
+
+  return filled
+}
 
 export default function LeagueForm({ mode, record, onSaved }) {
   const [leagueName, setLeagueName] = useState('')
   const [teams, setTeams] = useState(makeBlankTeams)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   const createLeague = useCreateLeague()
   const updateLeague = useUpdateLeague()
@@ -51,8 +72,7 @@ export default function LeagueForm({ mode, record, onSaved }) {
   useEffect(() => {
     if (mode === 'edit' && record) {
       setLeagueName(record.name ?? '')
-      // TODO: load existing teams for this league from API
-      setTeams(makeBlankTeams())
+      setTeams(buildTeamsFromRecord(record.teams ?? []))
     } else {
       setLeagueName('')
       setTeams(makeBlankTeams())
@@ -127,8 +147,6 @@ export default function LeagueForm({ mode, record, onSaved }) {
 
   function handleDelete() {
     if (!record) return
-    if (!window.confirm(`Delete league "${record.name}" and all its teams?`))
-      return
     removeLeague.mutate(record.id, { onSuccess: () => onSaved?.() })
   }
 
@@ -144,30 +162,6 @@ export default function LeagueForm({ mode, record, onSaved }) {
 
   return (
     <Box component="form" onSubmit={handleSubmit}>
-      {/* Header row */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          mb: 2,
-        }}
-      >
-        <Typography variant="h6">
-          {mode === 'create' ? 'New League' : `Edit: ${record?.name}`}
-        </Typography>
-
-        {myTeamIndex >= 0 && teams[myTeamIndex].name && (
-          <Chip
-            icon={<StarIcon sx={{ fontSize: 16 }} />}
-            label={`My Team: ${teams[myTeamIndex].name}`}
-            color="secondary"
-            size="small"
-            variant="outlined"
-          />
-        )}
-      </Box>
-
       {mutation.isError && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {mutation.error?.body?.message || mutation.error?.message}
@@ -183,8 +177,6 @@ export default function LeagueForm({ mode, record, onSaved }) {
         fullWidth
         sx={{ mb: 3 }}
       />
-
-      <Divider sx={{ mb: 2 }} />
 
       {/* Teams header */}
       <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>
@@ -271,8 +263,8 @@ export default function LeagueForm({ mode, record, onSaved }) {
           <Button
             variant="outlined"
             color="error"
-            startIcon={<DeleteIcon />}
-            onClick={handleDelete}
+            startIcon={removeLeague.isPending ? <CircularProgress size={18} /> : <DeleteIcon />}
+            onClick={() => setDeleteOpen(true)}
             disabled={isPending}
           >
             Delete League
@@ -281,7 +273,7 @@ export default function LeagueForm({ mode, record, onSaved }) {
         <Button
           type="submit"
           variant="contained"
-          startIcon={<SaveIcon />}
+          startIcon={mutation.isPending ? <CircularProgress size={18} color="inherit" /> : <SaveIcon />}
           disabled={isPending}
           sx={{
             bgcolor: 'primary.main',
@@ -291,6 +283,20 @@ export default function LeagueForm({ mode, record, onSaved }) {
           {mode === 'create' ? 'Create League & Teams' : 'Save Changes'}
         </Button>
       </Box>
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete League"
+        itemName={record?.name}
+        message={`Are you sure you want to delete "${record?.name ?? 'this league'}" and all of its teams? This action cannot be undone.`}
+        onCancel={() => setDeleteOpen(false)}
+        onConfirm={() => {
+          handleDelete()
+          setDeleteOpen(false)
+        }}
+        isLoading={removeLeague.isPending}
+      />
     </Box>
   )
 }
+
+

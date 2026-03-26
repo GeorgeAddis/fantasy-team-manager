@@ -19,6 +19,7 @@ export const queryKeys = {
     all: ['players'],
     list: (params) => ['players', 'list', params],
     detail: (id) => ['players', 'detail', id],
+    stats: ['players', 'stats'],
   },
   lineupSlots: {
     all: ['lineup-slots'],

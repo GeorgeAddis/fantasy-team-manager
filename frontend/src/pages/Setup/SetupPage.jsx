@@ -18,10 +18,12 @@ import SportsFootballIcon from '@mui/icons-material/SportsFootball'
 import GroupsIcon from '@mui/icons-material/Groups'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
+import UploadFileIcon from '@mui/icons-material/UploadFile'
 
 import { useLeagueList } from '@/hooks/useLeagues'
 import { useIrlFranchiseList } from '@/hooks/useIrlFranchises'
-import { usePlayerList } from '@/hooks/usePlayers'
+import { usePlayerList, useImportPlayers } from '@/hooks/usePlayers'
+import ImportPlayersDialog from '@/components/ImportPlayersDialog'
 
 import LeagueForm from './LeagueForm'
 import IrlFranchiseForm from './IrlFranchiseForm'
@@ -37,6 +39,8 @@ export default function SetupPage() {
   const [entity, setEntity] = useState(null)
   const [mode, setMode] = useState('create')
   const [editRecord, setEditRecord] = useState(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const importMutation = useImportPlayers()
 
   const leagueQuery = useLeagueList()
   const franchiseQuery = useIrlFranchiseList()
@@ -50,6 +54,11 @@ export default function SetupPage() {
 
   function handleModeChange(_, next) {
     if (!next) return
+    if (next === 'import') {
+      importMutation.reset()
+      setImportOpen(true)
+      return
+    }
     setMode(next)
     setEditRecord(null)
   }
@@ -65,7 +74,7 @@ export default function SetupPage() {
     if (!opt) return ''
     if (entity === 'irlFranchise')
       return `${opt.name} (${opt.abbreviated_name})`
-    if (entity === 'player') return `${opt.name} — ${opt.position}`
+    if (entity === 'player') return `${opt.name} — ${(opt.positions ?? []).join(', ')}`
     return opt.name
   }
 
@@ -78,10 +87,12 @@ export default function SetupPage() {
     <Box
       sx={{
         display: 'flex',
-        minHeight: 'calc(100vh - 64px)',
+        height: '100%',
+        minHeight: '100%',
+        overflow: 'hidden',
       }}
     >
-      {/* ──── Sidebar — full viewport height, spacer below controls ──── */}
+      {/* ──── Sidebar — stretches full height of content area ──── */}
       <Box
         sx={{
           width: 260,
@@ -89,13 +100,11 @@ export default function SetupPage() {
           bgcolor: 'background.paper',
           borderRight: '1px solid',
           borderColor: 'divider',
-          minHeight: 'calc(100vh - 64px)',
-          height: 'calc(100vh - 64px)',
           display: 'flex',
           flexDirection: 'column',
           p: 2.5,
           gap: 0,
-          overflow: 'hidden',
+          overflowY: 'auto',
         }}
       >
         <Box
@@ -104,7 +113,6 @@ export default function SetupPage() {
             display: 'flex',
             flexDirection: 'column',
             gap: 2,
-            maxHeight: 'calc(100vh - 64px - 96px)',
             overflowY: 'auto',
             pr: 0.5,
           }}
@@ -182,9 +190,15 @@ export default function SetupPage() {
                 <EditIcon sx={{ mr: 1, fontSize: 18 }} />
                 Edit Existing
               </ToggleButton>
+              {entity === 'player' && (
+                <ToggleButton value="import">
+                  <UploadFileIcon sx={{ mr: 1, fontSize: 18, color: 'common.white' }} />
+                  Import Players
+                </ToggleButton>
+              )}
             </ToggleButtonGroup>
 
-            {mode === 'edit' && (
+            {mode === 'edit' && entity !== 'player' && (
               <Autocomplete
                 size="small"
                 options={getRecords()}
@@ -211,7 +225,7 @@ export default function SetupPage() {
                       )}
                       {entity === 'player' && (
                         <Chip
-                          label={option.position}
+                          label={(option.positions ?? []).join(', ')}
                           size="small"
                           sx={{ ml: 1, height: 20, fontSize: '0.75rem' }}
                         />
@@ -229,8 +243,8 @@ export default function SetupPage() {
         <Box sx={{ flex: 1, minHeight: 96 }} aria-hidden />
       </Box>
 
-      {/* ──── Main form area ──── */}
-      <Box sx={{ flex: 1, minWidth: 0, p: 3 }}>
+      {/* ──── Main form area (scrolls independently) ──── */}
+      <Box sx={{ flex: 1, minWidth: 0, p: 3, overflow: 'auto' }}>
         {!entity && (
           <Box
             sx={{
@@ -275,6 +289,15 @@ export default function SetupPage() {
           </Fade>
         )}
       </Box>
+
+      <ImportPlayersDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={(file, clear) => importMutation.mutate({ file, clearExisting: clear })}
+        isLoading={importMutation.isPending}
+        result={importMutation.data}
+        error={importMutation.error}
+      />
     </Box>
   )
 }

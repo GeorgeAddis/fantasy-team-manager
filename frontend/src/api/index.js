@@ -16,6 +16,7 @@ export {
   createLeague,
   updateLeague,
   deleteLeague,
+  updateRosters,
 } from './leagues'
 export {
   listTeams,

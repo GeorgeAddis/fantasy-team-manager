@@ -22,3 +22,21 @@ export function updatePlayer(id, body) {
 export function deletePlayer(id) {
   return apiFetch(`${path}/${id}`, { method: 'DELETE' })
 }
+
+export function getPlayerStats() {
+  return apiFetch(`${path}/stats`)
+}
+
+export function importPlayers(file, clearExisting = false) {
+  const form = new FormData()
+  form.append('file', file)
+  if (clearExisting) form.append('clear_existing', '1')
+  return apiFetch(`${path}/import`, { method: 'POST', body: form })
+}
+
+export function importRankings(data, type, period) {
+  return apiFetch(`${path}/import-rankings`, {
+    method: 'POST',
+    body: { data, type, period },
+  })
+}

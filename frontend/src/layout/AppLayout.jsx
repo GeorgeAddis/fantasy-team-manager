@@ -3,7 +3,8 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 const ROUTES = [
   { path: '/', label: 'Overview' },
-  { path: '/teams', label: 'Manage Teams' },
+  { path: '/manage-teams', label: 'Manage Teams' },
+  { path: '/update-teams', label: 'Update Teams' },
   { path: '/rankings', label: 'Rankings' },
   { path: '/setup', label: 'Setup' },
 ]
@@ -19,9 +20,9 @@ export default function AppLayout() {
   const value = tabIndexFromPath(pathname === '' ? '/' : pathname)
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <AppBar
-        position="sticky"
+        position="static"
         elevation={0}
         sx={{
           bgcolor: 'background.paper',
@@ -113,6 +114,10 @@ export default function AppLayout() {
         component="main"
         sx={{
           flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'auto',
           bgcolor: 'background.default',
         }}
       >

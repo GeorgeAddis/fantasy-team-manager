@@ -12,9 +12,13 @@ use Illuminate\Support\Facades\Route;
 | Standard: index/create store, show, update, destroy
 */
 Route::prefix('v1')->group(function () {
+    Route::post('leagues/{league}/update-rosters', [LeagueController::class, 'updateRosters']);
     Route::apiResource('leagues', LeagueController::class);
     Route::apiResource('teams', TeamController::class);
     Route::apiResource('irl-franchises', IrlFranchiseController::class);
+    Route::post('players/import', [PlayerController::class, 'import']);
+    Route::post('players/import-rankings', [PlayerController::class, 'importRankings']);
+    Route::get('players/stats', [PlayerController::class, 'stats']);
     Route::apiResource('players', PlayerController::class);
     Route::apiResource('lineup-slots', LineupSlotController::class);
 });
