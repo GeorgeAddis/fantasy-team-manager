@@ -55,11 +55,19 @@ export function usePlayerStats() {
 export function useImportPlayers() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ file, clearExisting }) => api.importPlayers(file, clearExisting),
+    mutationFn: ({ file, clearExisting, skipExisting }) => api.importPlayers(file, clearExisting, skipExisting),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.players.all })
       qc.invalidateQueries({ queryKey: queryKeys.players.stats })
     },
+  })
+}
+
+export function useImportFantraxIds() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.importFantraxIds(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.players.all }),
   })
 }
 

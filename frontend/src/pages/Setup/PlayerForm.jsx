@@ -182,6 +182,7 @@ export default function PlayerForm({ mode, record, onSaved }) {
 const COL = {
   name:    { flex: '1 1 0', minWidth: 70 },
   alt:     { flex: '0.7 1 0', minWidth: 50 },
+  fantrax: { width: 88,  flexShrink: 0 },
   pos:     { width: 100,  flexShrink: 0 },
   team:    { width: 72,  flexShrink: 0 },
   wk:      { width: 64,  flexShrink: 0 },
@@ -326,6 +327,7 @@ function PlayerTable({ franchises, update, remove }) {
               >
                 <Box sx={COL.name}>Name</Box>
                 <Box sx={COL.alt}>Alt Name</Box>
+                <Box sx={COL.fantrax}>Fantrax ID</Box>
                 <Box sx={COL.pos}>Position</Box>
                 <Box sx={COL.team}>Team</Box>
                 <Box sx={COL.wk}>Wk Rank</Box>
@@ -422,6 +424,7 @@ const LivePlayerRow = memo(function LivePlayerRow({
         id: player.id,
         name: cur.name,
         alternate_name: cur.alternate_name || null,
+        fantrax_id: cur.fantrax_id || null,
         positions: cur.positions,
         irl_franchise_id: cur.irl_franchise_id || null,
         week_rank: cur.week_rank === '' ? null : Number(cur.week_rank),
@@ -501,6 +504,19 @@ const LivePlayerRow = memo(function LivePlayerRow({
           value={local.alternate_name}
           onChange={(e) => handleText('alternate_name', e.target.value)}
           onBlur={() => handleBlur('alternate_name')}
+          fullWidth
+          placeholder="—"
+          sx={INPUT_SX}
+        />
+      </Box>
+
+      <Box sx={{ ...COL.fantrax, pr: 0.5 }}>
+        <TextField
+          variant="standard"
+          size="small"
+          value={local.fantrax_id}
+          onChange={(e) => handleText('fantrax_id', e.target.value)}
+          onBlur={() => handleBlur('fantrax_id')}
           fullWidth
           placeholder="—"
           sx={INPUT_SX}
@@ -599,6 +615,7 @@ function rowFromPlayer(p) {
   return {
     name: p.name ?? '',
     alternate_name: p.alternate_name ?? '',
+    fantrax_id: p.fantrax_id ?? '',
     positions: Array.isArray(p.positions) ? p.positions : [],
     irl_franchise_id: p.irl_franchise_id ?? '',
     week_rank: p.week_rank != null && p.week_rank !== 999 ? p.week_rank : '',

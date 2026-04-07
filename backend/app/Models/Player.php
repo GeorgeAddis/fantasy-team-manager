@@ -11,6 +11,7 @@ class Player extends Model
     protected $fillable = [
         'name',
         'alternate_name',
+        'fantrax_id',
         'irl_franchise_id',
         'week_rank',
         'week_position_rank',

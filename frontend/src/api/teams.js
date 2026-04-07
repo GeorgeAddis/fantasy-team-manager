@@ -22,3 +22,11 @@ export function updateTeam(id, body) {
 export function deleteTeam(id) {
   return apiFetch(`${path}/${id}`, { method: 'DELETE' })
 }
+
+export function getTeamLineupAnalysis() {
+  return apiFetch(`${path}/lineup-analysis`)
+}
+
+export function getTeamRoster(id) {
+  return apiFetch(`${path}/${id}/roster`)
+}

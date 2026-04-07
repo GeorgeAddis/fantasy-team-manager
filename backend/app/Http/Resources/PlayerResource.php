@@ -14,6 +14,7 @@ class PlayerResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'alternate_name' => $this->alternate_name,
+            'fantrax_id' => $this->fantrax_id,
             'irl_franchise_id' => $this->irl_franchise_id,
             'irl_franchise_name' => $this->whenLoaded('irlFranchise', fn () => $this->irlFranchise?->name),
             'irl_franchise_abbr' => $this->whenLoaded('irlFranchise', fn () => $this->irlFranchise?->abbreviated_name),

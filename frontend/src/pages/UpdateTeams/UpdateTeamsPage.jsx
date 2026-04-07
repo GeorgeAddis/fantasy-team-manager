@@ -14,8 +14,10 @@ import {
   Typography,
 } from '@mui/material'
 import SyncIcon from '@mui/icons-material/Sync'
+import ListAltIcon from '@mui/icons-material/ListAlt'
 import { useLeagueList, useUpdateRosters } from '@/hooks/useLeagues'
 import PasteDataDialog from '@/components/PasteDataDialog'
+import RosterDialog from '@/components/RosterDialog'
 
 function formatUpdatedAt(iso) {
   if (!iso) return null
@@ -35,6 +37,7 @@ export default function UpdateTeamsPage() {
   const [updateTarget, setUpdateTarget] = useState(null)
   const [rosterText, setRosterText] = useState('')
   const rosterMutation = useUpdateRosters()
+  const [rosterTarget, setRosterTarget] = useState(null)
 
   const sorted = useMemo(() => {
     return [...leagues].sort((a, b) => {
@@ -94,7 +97,7 @@ export default function UpdateTeamsPage() {
           component={Paper}
           elevation={0}
           sx={{
-            maxWidth: 680,
+            maxWidth: 800,
             width: '100%',
             border: '1px solid',
             borderColor: 'divider',
@@ -108,6 +111,9 @@ export default function UpdateTeamsPage() {
                 </TableCell>
                 <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>
                   Last Updated
+                </TableCell>
+                <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                  Roster
                 </TableCell>
                 <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }} align="left">
                   Actions
@@ -138,6 +144,26 @@ export default function UpdateTeamsPage() {
                         Never
                       </Typography>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      const myTeam = league.teams?.find((t) => t.my_team)
+                      return myTeam ? (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<ListAltIcon />}
+                          onClick={() => setRosterTarget({ teamId: myTeam.id, teamName: myTeam.name, leagueName: league.name })}
+                          sx={{
+                            textTransform: 'none',
+                            bgcolor: 'primary.main',
+                            '&:hover': { bgcolor: 'primary.dark' },
+                          }}
+                        >
+                          View Roster
+                        </Button>
+                      ) : null
+                    })()}
                   </TableCell>
                   <TableCell align="left">
                     <Button
@@ -223,6 +249,14 @@ export default function UpdateTeamsPage() {
           </Box>
         )}
       </PasteDataDialog>
+
+      <RosterDialog
+        open={Boolean(rosterTarget)}
+        onClose={() => setRosterTarget(null)}
+        teamId={rosterTarget?.teamId}
+        teamName={rosterTarget?.teamName}
+        leagueName={rosterTarget?.leagueName}
+      />
     </Box>
   )
 }

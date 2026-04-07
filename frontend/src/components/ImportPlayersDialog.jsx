@@ -18,7 +18,8 @@ import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 
 export default function ImportPlayersDialog({ open, onClose, onImport, isLoading, result, error }) {
   const [file, setFile] = useState(null)
-  const [clearExisting, setClearExisting] = useState(true)
+  const [clearExisting, setClearExisting] = useState(false)
+  const [skipExisting, setSkipExisting] = useState(true)
   const inputRef = useRef(null)
 
   function handleFileChange(e) {
@@ -31,9 +32,19 @@ export default function ImportPlayersDialog({ open, onClose, onImport, isLoading
     onClose()
   }
 
+  function handleClearExistingChange(e) {
+    setClearExisting(e.target.checked)
+    if (e.target.checked) setSkipExisting(false)
+  }
+
+  function handleSkipExistingChange(e) {
+    setSkipExisting(e.target.checked)
+    if (e.target.checked) setClearExisting(false)
+  }
+
   function handleImport() {
     if (!file) return
-    onImport(file, clearExisting)
+    onImport(file, clearExisting, skipExisting)
   }
 
   return (
@@ -101,14 +112,26 @@ export default function ImportPlayersDialog({ open, onClose, onImport, isLoading
         <FormControlLabel
           control={
             <Checkbox
+              checked={skipExisting}
+              onChange={handleSkipExistingChange}
+              color="secondary"
+              disabled={isLoading}
+            />
+          }
+          label="Skip players that already exist (import new only)"
+          sx={{ mt: 1.5, display: 'block', '& .MuiTypography-root': { fontSize: '0.875rem' } }}
+        />
+        <FormControlLabel
+          control={
+            <Checkbox
               checked={clearExisting}
-              onChange={(e) => setClearExisting(e.target.checked)}
+              onChange={handleClearExistingChange}
               color="secondary"
               disabled={isLoading}
             />
           }
           label="Clear all existing players before import"
-          sx={{ mt: 1.5, '& .MuiTypography-root': { fontSize: '0.875rem' } }}
+          sx={{ display: 'block', '& .MuiTypography-root': { fontSize: '0.875rem' } }}
         />
 
         {result && !error && (

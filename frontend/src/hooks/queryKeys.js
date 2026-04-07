@@ -9,6 +9,7 @@ export const queryKeys = {
     all: ['teams'],
     list: (params) => ['teams', 'list', params],
     detail: (id) => ['teams', 'detail', id],
+    roster: (id) => ['teams', 'roster', id],
   },
   irlFranchises: {
     all: ['irl-franchises'],

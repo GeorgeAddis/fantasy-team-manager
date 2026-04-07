@@ -13,6 +13,7 @@ class LeagueResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'fantrax_id' => $this->fantrax_id,
             'teams' => $this->whenLoaded('teams', function () {
                 return $this->teams
                     ->sortBy('id')

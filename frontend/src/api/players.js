@@ -27,11 +27,16 @@ export function getPlayerStats() {
   return apiFetch(`${path}/stats`)
 }
 
-export function importPlayers(file, clearExisting = false) {
+export function importPlayers(file, clearExisting = false, skipExisting = true) {
   const form = new FormData()
   form.append('file', file)
   if (clearExisting) form.append('clear_existing', '1')
+  if (skipExisting) form.append('skip_existing', '1')
   return apiFetch(`${path}/import`, { method: 'POST', body: form })
+}
+
+export function importFantraxIds() {
+  return apiFetch(`${path}/import-fantrax-ids`, { method: 'POST' })
 }
 
 export function importRankings(data, type, period) {

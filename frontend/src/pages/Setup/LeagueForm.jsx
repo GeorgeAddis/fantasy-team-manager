@@ -60,6 +60,7 @@ function buildTeamsFromRecord(recordTeams = []) {
 
 export default function LeagueForm({ mode, record, onSaved }) {
   const [leagueName, setLeagueName] = useState('')
+  const [fantraxId, setFantraxId] = useState('')
   const [teams, setTeams] = useState(makeBlankTeams)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -72,9 +73,11 @@ export default function LeagueForm({ mode, record, onSaved }) {
   useEffect(() => {
     if (mode === 'edit' && record) {
       setLeagueName(record.name ?? '')
+      setFantraxId(record.fantrax_id ?? '')
       setTeams(buildTeamsFromRecord(record.teams ?? []))
     } else {
       setLeagueName('')
+      setFantraxId('')
       setTeams(makeBlankTeams())
     }
   }, [mode, record])
@@ -113,11 +116,12 @@ export default function LeagueForm({ mode, record, onSaved }) {
     e.preventDefault()
     try {
       let leagueId = record?.id
+      const leaguePayload = { name: leagueName, fantrax_id: fantraxId || null }
       if (mode === 'create') {
-        const res = await createLeague.mutateAsync({ name: leagueName })
+        const res = await createLeague.mutateAsync(leaguePayload)
         leagueId = res?.data?.id
       } else if (record) {
-        await updateLeague.mutateAsync({ id: record.id, name: leagueName })
+        await updateLeague.mutateAsync({ id: record.id, ...leaguePayload })
       }
 
       if (leagueId) {
@@ -168,15 +172,23 @@ export default function LeagueForm({ mode, record, onSaved }) {
         </Alert>
       )}
 
-      {/* League name */}
-      <TextField
-        label="League Name"
-        value={leagueName}
-        onChange={(e) => setLeagueName(e.target.value)}
-        required
-        fullWidth
-        sx={{ mb: 3 }}
-      />
+      {/* League name + Fantrax ID */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 3 }}>
+        <TextField
+          label="League Name"
+          value={leagueName}
+          onChange={(e) => setLeagueName(e.target.value)}
+          required
+          fullWidth
+        />
+        <TextField
+          label="League Fantrax ID"
+          value={fantraxId}
+          onChange={(e) => setFantraxId(e.target.value)}
+          fullWidth
+          placeholder="e.g. abc123xyz"
+        />
+      </Box>
 
       {/* Teams header */}
       <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>

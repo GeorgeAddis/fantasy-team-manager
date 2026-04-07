@@ -14,7 +14,8 @@ class LeagueStoreRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255'],
+            'name'       => ['required', 'string', 'max:255'],
+            'fantrax_id' => ['nullable', 'string', 'max:255'],
         ];
     }
 }

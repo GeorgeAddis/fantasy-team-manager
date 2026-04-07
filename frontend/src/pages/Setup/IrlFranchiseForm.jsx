@@ -97,21 +97,14 @@ export default function IrlFranchiseForm({ mode, record, onSaved }) {
     remove.mutate(record.id, { onSuccess: () => onSaved?.() })
   }
 
-  if (mode === 'edit' && !record) {
+  if (mode === 'edit') {
     return (
-      <Box sx={{ display: 'flex', gap: 3, height: '100%' }}>
-        <Box sx={{ flex: '0 0 380px' }}>
-          <Typography color="text.secondary">
-            Select a franchise from the sidebar dropdown.
-          </Typography>
-        </Box>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <FranchiseTable
-            franchises={franchises}
-            update={update}
-            remove={remove}
-          />
-        </Box>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <FranchiseTable
+          franchises={franchises}
+          update={update}
+          remove={remove}
+        />
       </Box>
     )
   }

@@ -43,6 +43,7 @@ class PlayerUpdateRequest extends FormRequest
         return [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'alternate_name' => ['nullable', 'string', 'max:255'],
+            'fantrax_id' => ['nullable', 'string', 'max:255'],
             'irl_franchise_id' => ['nullable', 'integer', Rule::exists('irl_franchises', 'id')],
             'week_rank' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'week_position_rank' => ['sometimes', 'nullable', 'integer', 'min:0'],

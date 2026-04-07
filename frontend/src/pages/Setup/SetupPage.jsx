@@ -5,7 +5,6 @@ import {
   Card,
   CardActionArea,
   CardContent,
-  Chip,
   Divider,
   Fade,
   TextField,
@@ -19,11 +18,13 @@ import GroupsIcon from '@mui/icons-material/Groups'
 import AddIcon from '@mui/icons-material/Add'
 import EditIcon from '@mui/icons-material/Edit'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
+import DownloadingIcon from '@mui/icons-material/Downloading'
 
 import { useLeagueList } from '@/hooks/useLeagues'
 import { useIrlFranchiseList } from '@/hooks/useIrlFranchises'
-import { usePlayerList, useImportPlayers } from '@/hooks/usePlayers'
+import { usePlayerList, useImportPlayers, useImportFantraxIds } from '@/hooks/usePlayers'
 import ImportPlayersDialog from '@/components/ImportPlayersDialog'
+import ImportFantraxIdsDialog from '@/components/ImportFantraxIdsDialog'
 
 import LeagueForm from './LeagueForm'
 import IrlFranchiseForm from './IrlFranchiseForm'
@@ -40,7 +41,9 @@ export default function SetupPage() {
   const [mode, setMode] = useState('create')
   const [editRecord, setEditRecord] = useState(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [fantraxImportOpen, setFantraxImportOpen] = useState(false)
   const importMutation = useImportPlayers()
+  const fantraxImportMutation = useImportFantraxIds()
 
   const leagueQuery = useLeagueList()
   const franchiseQuery = useIrlFranchiseList()
@@ -57,6 +60,11 @@ export default function SetupPage() {
     if (next === 'import') {
       importMutation.reset()
       setImportOpen(true)
+      return
+    }
+    if (next === 'import-fantrax') {
+      fantraxImportMutation.reset()
+      setFantraxImportOpen(true)
       return
     }
     setMode(next)
@@ -196,9 +204,15 @@ export default function SetupPage() {
                   Import Players
                 </ToggleButton>
               )}
+              {entity === 'player' && (
+                <ToggleButton value="import-fantrax">
+                  <DownloadingIcon sx={{ mr: 1, fontSize: 18, color: 'common.white' }} />
+                  Import Fantrax IDs
+                </ToggleButton>
+              )}
             </ToggleButtonGroup>
 
-            {mode === 'edit' && entity !== 'player' && (
+            {mode === 'edit' && entity === 'league' && (
               <Autocomplete
                 size="small"
                 options={getRecords()}
@@ -216,20 +230,6 @@ export default function SetupPage() {
                   <li {...props} key={option.id}>
                     <Box>
                       <Typography variant="body2">{option.name}</Typography>
-                      {entity === 'irlFranchise' && (
-                        <Chip
-                          label={option.abbreviated_name}
-                          size="small"
-                          sx={{ ml: 1, height: 20, fontSize: '0.75rem' }}
-                        />
-                      )}
-                      {entity === 'player' && (
-                        <Chip
-                          label={(option.positions ?? []).join(', ')}
-                          size="small"
-                          sx={{ ml: 1, height: 20, fontSize: '0.75rem' }}
-                        />
-                      )}
                     </Box>
                   </li>
                 )}
@@ -293,10 +293,19 @@ export default function SetupPage() {
       <ImportPlayersDialog
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onImport={(file, clear) => importMutation.mutate({ file, clearExisting: clear })}
+        onImport={(file, clear, skip) => importMutation.mutate({ file, clearExisting: clear, skipExisting: skip })}
         isLoading={importMutation.isPending}
         result={importMutation.data}
         error={importMutation.error}
+      />
+
+      <ImportFantraxIdsDialog
+        open={fantraxImportOpen}
+        onClose={() => setFantraxImportOpen(false)}
+        onImport={() => fantraxImportMutation.mutate()}
+        isLoading={fantraxImportMutation.isPending}
+        result={fantraxImportMutation.data}
+        error={fantraxImportMutation.error}
       />
     </Box>
   )

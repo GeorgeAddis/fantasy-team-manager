@@ -14,10 +14,13 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     Route::post('leagues/{league}/update-rosters', [LeagueController::class, 'updateRosters']);
     Route::apiResource('leagues', LeagueController::class);
+    Route::get('teams/lineup-analysis', [TeamController::class, 'lineupAnalysis']);
+    Route::get('teams/{team}/roster', [TeamController::class, 'roster']);
     Route::apiResource('teams', TeamController::class);
     Route::apiResource('irl-franchises', IrlFranchiseController::class);
     Route::post('players/import', [PlayerController::class, 'import']);
     Route::post('players/import-rankings', [PlayerController::class, 'importRankings']);
+    Route::post('players/import-fantrax-ids', [PlayerController::class, 'importFantraxIds']);
     Route::get('players/stats', [PlayerController::class, 'stats']);
     Route::apiResource('players', PlayerController::class);
     Route::apiResource('lineup-slots', LineupSlotController::class);

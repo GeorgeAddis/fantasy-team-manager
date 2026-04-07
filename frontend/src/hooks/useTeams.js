@@ -36,6 +36,21 @@ export function useUpdateTeam() {
   })
 }
 
+export function useTeamLineupAnalysis() {
+  return useQuery({
+    queryKey: [...queryKeys.teams.all, 'lineup-analysis'],
+    queryFn: () => teamsApi.getTeamLineupAnalysis(),
+  })
+}
+
+export function useTeamRoster(id, options = {}) {
+  return useQuery({
+    queryKey: queryKeys.teams.roster(id),
+    queryFn: () => teamsApi.getTeamRoster(id),
+    enabled: id != null && options.enabled !== false,
+  })
+}
+
 export function useDeleteTeam() {
   const qc = useQueryClient()
   return useMutation({
