@@ -379,6 +379,103 @@ class PlayerController extends Controller
     }
 
     /**
+     * Import season ranking data from pasted tab-separated text (all positions at once).
+     *
+     * Expected columns:
+     *   Player | Team | Position | Age | Status | 1QB Rank | SF/TE Prem | 1QB Pos Rk | ...
+     *
+     * Sets season_rank from "1QB Rank" and season_position_rank from "1QB Pos Rk" (e.g. WR01 → 1).
+     */
+    public function importSeasonRankings(Request $request): JsonResponse
+    {
+        $request->validate([
+            'data' => ['required', 'string', 'min:5'],
+        ]);
+
+        $lines = array_values(array_filter(
+            array_map('trim', explode("\n", $request->input('data'))),
+            fn ($l) => $l !== ''
+        ));
+
+        if (empty($lines)) {
+            return response()->json(['message' => 'No data provided.'], 422);
+        }
+
+        // Skip header row if present
+        $firstCols = preg_split('/\t/', $lines[0]);
+        if (stripos($firstCols[0] ?? '', 'player') !== false || stripos($firstCols[0] ?? '', 'search') !== false) {
+            array_shift($lines);
+        }
+        // Second possible header/search line
+        $firstCols = preg_split('/\t/', $lines[0] ?? '');
+        if (stripos($firstCols[0] ?? '', 'player') !== false || stripos($firstCols[0] ?? '', 'search') !== false) {
+            array_shift($lines);
+        }
+
+        $allPlayers = Player::all();
+        $playerByName = [];
+        foreach ($allPlayers as $p) {
+            $playerByName[$this->normalizePlayerName($p->name)] = $p;
+            if ($p->alternate_name) {
+                $playerByName[$this->normalizePlayerName($p->alternate_name)] = $p;
+            }
+        }
+
+        $dstLookup = $this->buildDstFranchiseLookup();
+
+        $updated = 0;
+        $notFound = [];
+
+        foreach ($lines as $line) {
+            $cols = preg_split('/\t/', $line);
+
+            $rawPlayer = trim($cols[0] ?? '');
+            $teamAbbr  = strtoupper(trim($cols[1] ?? ''));
+            $position  = strtoupper(trim($cols[2] ?? ''));
+            $seasonRank = (int) trim($cols[5] ?? '');
+            $posRkRaw  = trim($cols[7] ?? '');
+
+            if ($rawPlayer === '' || $seasonRank <= 0) {
+                continue;
+            }
+
+            // Parse position rank from e.g. "WR01" → 1
+            $posRank = 999;
+            if (preg_match('/^[A-Z]{1,3}(\d+)$/i', $posRkRaw, $m)) {
+                $posRank = (int) $m[1];
+            }
+
+            // Match player
+            $player = null;
+
+            $mappedPos = $this->mapFantraxPosition($position);
+            if ($mappedPos === 'DST') {
+                // Match DST by team abbreviation
+                $player = $dstLookup[$teamAbbr] ?? null;
+            } else {
+                $player = $playerByName[$this->normalizePlayerName($rawPlayer)] ?? null;
+            }
+
+            if (!$player) {
+                $notFound[] = ['rank' => $seasonRank, 'name' => $rawPlayer, 'position' => $position];
+                continue;
+            }
+
+            $player->update([
+                'season_rank'          => $seasonRank,
+                'season_position_rank' => $posRank,
+            ]);
+            $updated++;
+        }
+
+        return response()->json([
+            'updated'     => $updated,
+            'not_found'   => $notFound,
+            'total_lines' => count($lines),
+        ]);
+    }
+
+    /**
      * Fetch player IDs from the Fantrax API and match them to players in our database.
      * Matches by normalised player name; uses position as a tiebreaker when multiple
      * DB players share the same name.  Returns an updated count and the list of DB

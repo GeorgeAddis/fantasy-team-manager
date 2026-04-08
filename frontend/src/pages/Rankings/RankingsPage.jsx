@@ -15,15 +15,15 @@ import CalendarViewWeekIcon from '@mui/icons-material/CalendarViewWeek'
 import EventIcon from '@mui/icons-material/Event'
 import LeaderboardIcon from '@mui/icons-material/Leaderboard'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
-import { usePlayerList, useImportRankings } from '@/hooks/usePlayers'
+import { usePlayerList, useImportRankings, useImportSeasonRankings } from '@/hooks/usePlayers'
 import PasteDataDialog from '@/components/PasteDataDialog'
+import PositionToggle from '@/components/PositionToggle'
 
 const MODES = [
   { key: 'week', label: 'Week', icon: CalendarViewWeekIcon },
   { key: 'season', label: 'Season', icon: EventIcon },
 ]
 
-const POSITION_KEYS = ['QB', 'RB', 'WR', 'TE', 'RWT', 'DST', 'K']
 const UPLOAD_TYPES = ['QB', 'RWT', 'DST', 'K']
 
 function isRanked(value) {
@@ -36,10 +36,16 @@ export default function RankingsPage() {
   const playerQuery = usePlayerList({ per_page: 5000, include_free_agents: 1 })
   const players = playerQuery.data?.data ?? []
 
+  // Week import state
   const [importOpen, setImportOpen] = useState(false)
   const [importType, setImportType] = useState('QB')
   const [importText, setImportText] = useState('')
   const importMutation = useImportRankings()
+
+  // Season import state
+  const [seasonImportOpen, setSeasonImportOpen] = useState(false)
+  const [seasonImportText, setSeasonImportText] = useState('')
+  const seasonImportMutation = useImportSeasonRankings()
 
   function openImport() {
     setImportType('QB')
@@ -60,7 +66,26 @@ export default function RankingsPage() {
     importMutation.mutate({ data: importText, type: importType, period: mode })
   }
 
+  function openSeasonImport() {
+    setSeasonImportText('')
+    seasonImportMutation.reset()
+    setSeasonImportOpen(true)
+  }
+
+  function closeSeasonImport() {
+    if (seasonImportMutation.isPending) return
+    setSeasonImportOpen(false)
+    setSeasonImportText('')
+    seasonImportMutation.reset()
+  }
+
+  function handleSeasonImportSubmit() {
+    if (!seasonImportText.trim()) return
+    seasonImportMutation.mutate({ data: seasonImportText })
+  }
+
   const importResult = importMutation.data
+  const seasonImportResult = seasonImportMutation.data
 
   const rows = useMemo(() => {
     if (!players.length) return []
@@ -154,48 +179,24 @@ export default function RankingsPage() {
             {mode === 'week' ? 'Week Rankings' : 'Season Rankings'}
           </Typography>
 
-          {mode === 'week' && (
-            <Tooltip title="Import rankings">
-              <Button
-                size="small"
-                variant="contained"
-                startIcon={<UploadFileIcon />}
-                onClick={openImport}
-                sx={{
-                  textTransform: 'none',
-                  bgcolor: 'primary.main',
-                  '&:hover': { bgcolor: 'primary.dark' },
-                }}
-              >
-                Import
-              </Button>
-            </Tooltip>
-          )}
+          <Tooltip title="Import rankings">
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<UploadFileIcon />}
+              onClick={mode === 'week' ? openImport : openSeasonImport}
+              sx={{
+                textTransform: 'none',
+                bgcolor: 'primary.main',
+                '&:hover': { bgcolor: 'primary.dark' },
+              }}
+            >
+              Import
+            </Button>
+          </Tooltip>
         </Box>
 
-        <ToggleButtonGroup
-          size="small"
-          exclusive
-          value={position}
-          onChange={(_, next) => next && setPosition(next)}
-          sx={{
-            mb: 2,
-            '& .MuiToggleButton-root': {
-              textTransform: 'none',
-              fontWeight: 700,
-              px: 1.5,
-              '&.Mui-selected': {
-                bgcolor: 'rgba(212,165,116,0.15)',
-                color: 'secondary.main',
-                borderColor: 'secondary.main',
-              },
-            },
-          }}
-        >
-          {POSITION_KEYS.map((key) => (
-            <ToggleButton key={key} value={key}>{key}</ToggleButton>
-          ))}
-        </ToggleButtonGroup>
+        <PositionToggle value={position} onChange={setPosition} sx={{ mb: 2 }} />
 
         {playerQuery.isLoading && <CircularProgress sx={{ mt: 2 }} />}
 
@@ -255,11 +256,11 @@ export default function RankingsPage() {
         )}
       </Box>
 
-      {/* ──── Import Rankings Dialog ──── */}
+      {/* ──── Import Week Rankings Dialog ──── */}
       <PasteDataDialog
         open={importOpen}
         onClose={closeImport}
-        title="Import Rankings"
+        title="Import Week Rankings"
         text={importText}
         onTextChange={setImportText}
         placeholder={'#\tPlayer (team)\tMatchup\t...\n1\tJosh Allen (BUF)\tvs. CIN\t...'}
@@ -330,6 +331,66 @@ export default function RankingsPage() {
                 {importResult.not_found.map((p, i) => (
                   <Typography key={i} variant="caption" sx={{ display: 'block', fontFamily: 'monospace' }}>
                     #{p.rank}: {p.name}
+                  </Typography>
+                ))}
+              </Box>
+            )}
+          </Box>
+        )}
+      </PasteDataDialog>
+
+      {/* ──── Import Season Rankings Dialog ──── */}
+      <PasteDataDialog
+        open={seasonImportOpen}
+        onClose={closeSeasonImport}
+        title="Import Season Rankings"
+        text={seasonImportText}
+        onTextChange={setSeasonImportText}
+        placeholder={"Player\tTeam\tPosition\tAge\tStatus\t1QB Rank\tSF/TE Prem\t1QB Pos Rk\n Ja'Marr Chase\tCIN\tWR\t26.1\tVeteran\t1\t3\tWR01"}
+        onSubmit={handleSeasonImportSubmit}
+        isPending={seasonImportMutation.isPending}
+        submitDisabled={!seasonImportText.trim()}
+        submitLabel="Import"
+        submitIcon={<UploadFileIcon />}
+        showSubmit={!seasonImportResult}
+        closeLabel={seasonImportResult ? 'Close' : 'Cancel'}
+      >
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Paste the full season rankings data below (all positions). Tab-separated
+          with columns: Player, Team, Position, Age, Status, 1QB Rank, SF/TE Prem, 1QB Pos Rk.
+        </Typography>
+
+        {seasonImportMutation.isError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {seasonImportMutation.error?.body?.message || seasonImportMutation.error?.message || 'Something went wrong.'}
+          </Alert>
+        )}
+
+        {seasonImportResult && (
+          <Box sx={{ mb: 2 }}>
+            <Alert severity="success" sx={{ mb: 1.5 }}>
+              Updated {seasonImportResult.updated} player{seasonImportResult.updated !== 1 ? 's' : ''} out of {seasonImportResult.total_lines} rows.
+            </Alert>
+
+            {seasonImportResult.not_found?.length > 0 && (
+              <Box
+                sx={{
+                  maxHeight: 160,
+                  overflowY: 'auto',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1.5,
+                  p: 1,
+                  fontSize: '0.8rem',
+                  bgcolor: 'background.default',
+                }}
+              >
+                <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: 'text.secondary', fontWeight: 600 }}>
+                  Players not found ({seasonImportResult.not_found.length})
+                </Typography>
+                {seasonImportResult.not_found.map((p, i) => (
+                  <Typography key={i} variant="caption" sx={{ display: 'block', fontFamily: 'monospace' }}>
+                    #{p.rank}: {p.name} ({p.position})
                   </Typography>
                 ))}
               </Box>

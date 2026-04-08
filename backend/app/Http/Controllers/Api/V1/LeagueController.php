@@ -52,6 +52,86 @@ class LeagueController extends Controller
     }
 
     /**
+     * Set requires_waiver_claim = true on all leagues.
+     */
+    public function flagWaiverClaims(): JsonResponse
+    {
+        $count = League::query()->update(['requires_waiver_claim' => true]);
+
+        return response()->json(['leagues_flagged' => $count]);
+    }
+
+    /**
+     * Return available (unrostered) players and the requesting team's players
+     * for waiver claim comparison.
+     */
+    public function waiverBoard(League $league, Request $request): JsonResponse
+    {
+        $teamId = $request->integer('team_id');
+
+        $league->load('teams');
+        $leagueTeamIds = $league->teams->pluck('id')->toArray();
+
+        // All player IDs rostered in this league
+        $rosteredIds = LineupSlot::whereIn('team_id', $leagueTeamIds)
+            ->whereNotNull('player_id')
+            ->pluck('player_id')
+            ->unique()
+            ->toArray();
+
+        // My team's slots
+        $mySlots = LineupSlot::where('team_id', $teamId)
+            ->with('player.irlFranchise')
+            ->get();
+
+        $myPlayerIds = $mySlots->pluck('player_id')->filter()->unique()->toArray();
+
+        $myPlayers = $mySlots
+            ->filter(fn ($s) => $s->player !== null)
+            ->map(fn ($s) => [
+                'id'                    => $s->player->id,
+                'name'                  => $s->player->name,
+                'positions'             => $s->player->positions ?? [],
+                'season_rank'           => $s->player->season_rank,
+                'season_position_rank'  => $s->player->season_position_rank,
+                'week_rank'             => $s->player->week_rank,
+                'week_position_rank'    => $s->player->week_position_rank,
+                'irl_franchise_abbr'    => $s->player->irlFranchise?->abbreviated_name,
+                'bye_week'              => $s->player->irlFranchise?->bye_week,
+                'lineup_position'       => $s->lineup_position->value,
+            ])
+            ->unique('id')
+            ->values();
+
+        // Available players: not rostered in this league, have any ranking
+        $available = Player::with('irlFranchise')
+            ->whereNotIn('id', $rosteredIds)
+            ->where(function ($q) {
+                $q->whereNotNull('season_rank')
+                  ->orWhereNotNull('season_position_rank')
+                  ->orWhereNotNull('week_rank')
+                  ->orWhereNotNull('week_position_rank');
+            })
+            ->get()
+            ->map(fn ($p) => [
+                'id'                    => $p->id,
+                'name'                  => $p->name,
+                'positions'             => $p->positions ?? [],
+                'season_rank'           => $p->season_rank,
+                'season_position_rank'  => $p->season_position_rank,
+                'week_rank'             => $p->week_rank,
+                'week_position_rank'    => $p->week_position_rank,
+                'irl_franchise_abbr'    => $p->irlFranchise?->abbreviated_name,
+                'bye_week'              => $p->irlFranchise?->bye_week,
+            ]);
+
+        return response()->json([
+            'my_players' => $myPlayers,
+            'available'  => $available,
+        ]);
+    }
+
+    /**
      * Parse pasted roster text and fill lineup slots for every team in the league.
      * Fully replaces existing lineup data.
      */

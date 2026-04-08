@@ -123,10 +123,12 @@ class TeamController extends Controller
 
         $nameOf = $players->pluck('name', 'id')->toArray();
 
-        // Pool of players eligible for a given position, sorted best→worst by week_rank.
+        // Pool of players eligible for a given position, sorted best→worst.
+        // QB, K, DST only have week_position_rank (imported separately); RB/WR/TE have week_rank.
+        $positionRankOnly = ['QB', 'K', 'DST'];
         $pool = fn (string $pos) => $players
             ->filter(fn ($p) => in_array($pos, $p->positions ?? [], true))
-            ->sortBy('week_rank')
+            ->sortBy(in_array($pos, $positionRankOnly, true) ? 'week_position_rank' : 'week_rank')
             ->values();
 
         // Greedily pick the best unused player(s) for each slot type.

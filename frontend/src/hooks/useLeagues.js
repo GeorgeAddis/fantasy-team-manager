@@ -48,6 +48,24 @@ export function useDeleteLeague() {
   })
 }
 
+export function useWaiverBoard(leagueId, teamId) {
+  return useQuery({
+    queryKey: [...queryKeys.leagues.all, 'waiver-board', leagueId, teamId],
+    queryFn: () => leaguesApi.getWaiverBoard(leagueId, teamId),
+    enabled: leagueId != null && teamId != null,
+  })
+}
+
+export function useFlagWaiverClaims() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => leaguesApi.flagWaiverClaims(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+    },
+  })
+}
+
 export function useUpdateRosters() {
   const qc = useQueryClient()
   return useMutation({

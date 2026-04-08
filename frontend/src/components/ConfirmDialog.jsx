@@ -14,6 +14,7 @@ export default function ConfirmDialog({
   message,
   itemName,
   confirmLabel = 'Delete',
+  confirmColor = 'error',
   cancelLabel = 'Cancel',
   onCancel,
   onConfirm,
@@ -49,7 +50,7 @@ export default function ConfirmDialog({
           onClick={onConfirm}
           disabled={isLoading}
           variant="contained"
-          color="error"
+          color={confirmColor}
           startIcon={isLoading ? <CircularProgress size={16} color="inherit" /> : null}
         >
           {confirmLabel}

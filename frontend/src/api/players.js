@@ -45,3 +45,10 @@ export function importRankings(data, type, period) {
     body: { data, type, period },
   })
 }
+
+export function importSeasonRankings(data) {
+  return apiFetch(`${path}/import-season-rankings`, {
+    method: 'POST',
+    body: { data },
+  })
+}

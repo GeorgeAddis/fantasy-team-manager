@@ -80,3 +80,14 @@ export function useImportRankings() {
     },
   })
 }
+
+export function useImportSeasonRankings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ data }) => api.importSeasonRankings(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.players.all })
+      qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+    },
+  })
+}

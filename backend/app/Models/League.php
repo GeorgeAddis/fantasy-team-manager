@@ -7,12 +7,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class League extends Model
 {
-    protected $fillable = ['name', 'fantrax_id', 'teams_updated_at'];
+    protected $fillable = ['name', 'fantrax_id', 'teams_updated_at', 'requires_waiver_claim'];
 
     protected function casts(): array
     {
         return [
             'teams_updated_at' => 'datetime',
+            'requires_waiver_claim' => 'boolean',
         ];
     }
 

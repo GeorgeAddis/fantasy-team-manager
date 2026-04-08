@@ -23,6 +23,7 @@ import SyncIcon from '@mui/icons-material/Sync'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import CloseIcon from '@mui/icons-material/Close'
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
+import GavelIcon from '@mui/icons-material/Gavel'
 import RosterDialog from '@/components/RosterDialog'
 import PasteDataDialog from '@/components/PasteDataDialog'
 import { useUpdateRosters } from '@/hooks/useLeagues'
@@ -152,7 +153,7 @@ const HEAD_CELL = { fontWeight: 700, color: 'text.secondary' }
  * rows: [{ league, myTeam, analysis }]
  * variant: 'all' | 'require-lineup-change'
  */
-export default function TeamsTable({ rows, isLoading, variant }) {
+export default function TeamsTable({ rows, isLoading, variant, onMakeClaims }) {
   const [rosterTarget, setRosterTarget] = useState(null)
   const [changesTarget, setChangesTarget] = useState(null)
   const [updateTarget, setUpdateTarget] = useState(null)
@@ -160,6 +161,7 @@ export default function TeamsTable({ rows, isLoading, variant }) {
   const rosterMutation = useUpdateRosters()
 
   const isLineupChange = variant === 'require-lineup-change'
+  const isWaiverClaims = variant === 'require-waiver-claims'
 
   function openUpdateDialog(league) {
     setUpdateTarget(league)
@@ -194,7 +196,9 @@ export default function TeamsTable({ rows, isLoading, variant }) {
       <Typography color="text.secondary" sx={{ mt: 3 }}>
         {isLineupChange
           ? 'No teams require a lineup change this week.'
-          : 'No leagues found. Create one in the Setup tab first.'}
+          : isWaiverClaims
+            ? 'No leagues require waiver claims.'
+            : 'No leagues found. Create one in the Setup tab first.'}
       </Typography>
     )
   }
@@ -275,6 +279,21 @@ export default function TeamsTable({ rows, isLoading, variant }) {
                   )}
                 </TableCell>
                 <TableCell>
+                  {isWaiverClaims ? (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<GavelIcon />}
+                      onClick={() => onMakeClaims?.({ league, myTeam })}
+                      sx={{
+                        textTransform: 'none',
+                        bgcolor: 'primary.main',
+                        '&:hover': { bgcolor: 'primary.dark' },
+                      }}
+                    >
+                      Make Claims
+                    </Button>
+                  ) : (
                     <Button
                       size="small"
                       variant="contained"
@@ -288,6 +307,7 @@ export default function TeamsTable({ rows, isLoading, variant }) {
                     >
                       Update
                     </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Route;
 | Standard: index/create store, show, update, destroy
 */
 Route::prefix('v1')->group(function () {
+    Route::post('leagues/flag-waiver-claims', [LeagueController::class, 'flagWaiverClaims']);
+    Route::get('leagues/{league}/waiver-board', [LeagueController::class, 'waiverBoard']);
     Route::post('leagues/{league}/update-rosters', [LeagueController::class, 'updateRosters']);
     Route::apiResource('leagues', LeagueController::class);
     Route::get('teams/lineup-analysis', [TeamController::class, 'lineupAnalysis']);
@@ -20,6 +22,7 @@ Route::prefix('v1')->group(function () {
     Route::apiResource('irl-franchises', IrlFranchiseController::class);
     Route::post('players/import', [PlayerController::class, 'import']);
     Route::post('players/import-rankings', [PlayerController::class, 'importRankings']);
+    Route::post('players/import-season-rankings', [PlayerController::class, 'importSeasonRankings']);
     Route::post('players/import-fantrax-ids', [PlayerController::class, 'importFantraxIds']);
     Route::get('players/stats', [PlayerController::class, 'stats']);
     Route::apiResource('players', PlayerController::class);

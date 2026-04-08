@@ -29,6 +29,16 @@ export function deleteLeague(id) {
 }
 
 /** @returns {Promise<object>} */
+export function getWaiverBoard(leagueId, teamId) {
+  return apiFetch(`${path}/${leagueId}/waiver-board?team_id=${teamId}`)
+}
+
+/** @returns {Promise<object>} */
+export function flagWaiverClaims() {
+  return apiFetch(`${path}/flag-waiver-claims`, { method: 'POST' })
+}
+
+/** @returns {Promise<object>} */
 export function updateRosters(leagueId, data) {
   return apiFetch(`${path}/${leagueId}/update-rosters`, {
     method: 'POST',

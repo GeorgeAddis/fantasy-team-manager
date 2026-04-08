@@ -25,6 +25,7 @@ class LeagueResource extends JsonResource
                         'my_team' => $team->my_team,
                     ]);
             }),
+            'requires_waiver_claim' => $this->requires_waiver_claim,
             'teams_updated_at' => $this->teams_updated_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
