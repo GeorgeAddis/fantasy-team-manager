@@ -52,3 +52,38 @@ export function importSeasonRankings(data) {
     body: { data },
   })
 }
+
+export function searchMyTeams(params = {}) {
+  const q = new URLSearchParams(params).toString()
+  return apiFetch(`${path}/search-my-teams?${q}`)
+}
+
+export function importWaiverRankings(data, type) {
+  return apiFetch(`${path}/import-waiver-rankings`, {
+    method: 'POST',
+    body: { data, type },
+  })
+}
+
+export function listDoNotRoster() {
+  return apiFetch(`${path}/do-not-roster`)
+}
+
+export function addDoNotRoster(data) {
+  return apiFetch(`${path}/do-not-roster`, {
+    method: 'POST',
+    body: { data },
+  })
+}
+
+export function removeDoNotRoster(playerId) {
+  return apiFetch(`${path}/${playerId}/do-not-roster`, { method: 'DELETE' })
+}
+
+export function resetDoNotRoster() {
+  return apiFetch(`${path}/reset-do-not-roster`, { method: 'POST' })
+}
+
+export function listDoNotRosterTeams() {
+  return apiFetch(`${path}/do-not-roster-teams`)
+}

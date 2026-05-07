@@ -68,6 +68,132 @@ class PlayerController extends Controller
         return response()->noContent();
     }
 
+    /**
+     * Search across all "my teams" for players matching a name or IRL franchise.
+     * Returns which of my teams roster the matched players and their lineup positions.
+     */
+    public function searchMyTeams(Request $request): JsonResponse
+    {
+        $search = $request->string('search')->trim()->value();
+        $type = $request->input('type', 'player'); // 'player' or 'franchise'
+
+        if (!$search) {
+            return response()->json(['results' => []]);
+        }
+
+        // Get all "my team" IDs
+        $myTeams = \App\Models\Team::where('my_team', true)
+            ->with('league')
+            ->get();
+
+        $myTeamIds = $myTeams->pluck('id')->toArray();
+
+        if (empty($myTeamIds)) {
+            return response()->json(['results' => []]);
+        }
+
+        // Find matching player IDs
+        if ($type === 'franchise') {
+            $franchiseIds = IrlFranchise::where(function ($q) use ($search) {
+                $q->where('name', 'ilike', "%{$search}%")
+                  ->orWhere('abbreviated_name', 'ilike', "%{$search}%")
+                  ->orWhere('alternate_name', 'ilike', "%{$search}%")
+                  ->orWhere('alternate_abbreviated_name', 'ilike', "%{$search}%");
+            })->pluck('id')->toArray();
+
+            if (empty($franchiseIds)) {
+                return response()->json(['results' => [], 'status' => 'not_found']);
+            }
+
+            $playerIds = Player::whereIn('irl_franchise_id', $franchiseIds)->pluck('id')->toArray();
+        } else {
+            $players = Player::where(function ($q) use ($search) {
+                $q->where('name', 'ilike', "%{$search}%")
+                  ->orWhere('alternate_name', 'ilike', "%{$search}%");
+            })->get(['id', 'name']);
+
+            if ($players->isEmpty()) {
+                return response()->json(['results' => [], 'status' => 'not_found']);
+            }
+
+            $playerIds = $players->pluck('id')->toArray();
+        }
+
+        if (empty($playerIds)) {
+            return response()->json(['results' => [], 'status' => 'not_found']);
+        }
+
+        // Find lineup slots on my teams for these players
+        $slots = \App\Models\LineupSlot::whereIn('team_id', $myTeamIds)
+            ->whereIn('player_id', $playerIds)
+            ->with(['player.irlFranchise', 'team.league'])
+            ->get();
+
+        $teamLookup = $myTeams->keyBy('id');
+
+        $results = $slots->map(function ($slot) use ($teamLookup) {
+            $team = $teamLookup[$slot->team_id] ?? $slot->team;
+            return [
+                'player_name'          => $slot->player->name,
+                'player_id'            => $slot->player->id,
+                'positions'            => $slot->player->positions ?? [],
+                'irl_franchise_abbr'   => $slot->player->irlFranchise?->abbreviated_name,
+                'lineup_position'      => $slot->lineup_position->value,
+                'team_name'            => $team->name ?? '',
+                'league_name'          => $team->league->name ?? '',
+                'league_id'            => $team->league->id ?? null,
+                'season_rank'          => $slot->player->season_rank,
+                'season_position_rank' => $slot->player->season_position_rank,
+            ];
+        })->sortBy('player_name')->values();
+
+        $status = $results->isEmpty() ? 'not_on_teams' : 'found';
+
+        // For player search, include matched player names for the message
+        $matchedNames = [];
+        if ($type === 'player' && $status === 'not_on_teams') {
+            $matchedNames = $players->pluck('name')->toArray();
+        }
+
+        // Find leagues where matched players are available (not rostered)
+        $availableLeagues = [];
+        if ($type === 'player' && !empty($playerIds)) {
+            // Get all leagues (via my teams)
+            $leagueIds = $myTeams->pluck('league_id')->unique()->toArray();
+            $allLeagues = \App\Models\League::whereIn('id', $leagueIds)->with('teams')->get();
+
+            // League IDs where the player IS rostered (on any team, not just mine)
+            $rosteredLeagueIds = $results->pluck('league_id')->unique()->toArray();
+
+            // For each league not already showing the player on my team,
+            // check if the player is rostered on ANY team in that league
+            foreach ($allLeagues as $league) {
+                if (in_array($league->id, $rosteredLeagueIds, true)) {
+                    continue;
+                }
+
+                $leagueTeamIds = $league->teams->pluck('id')->toArray();
+                $isRostered = \App\Models\LineupSlot::whereIn('team_id', $leagueTeamIds)
+                    ->whereIn('player_id', $playerIds)
+                    ->exists();
+
+                if (!$isRostered) {
+                    $availableLeagues[] = [
+                        'league_id'   => $league->id,
+                        'league_name' => $league->name,
+                    ];
+                }
+            }
+        }
+
+        return response()->json([
+            'results' => $results,
+            'available_leagues' => $availableLeagues,
+            'status' => $status,
+            'matched_names' => $matchedNames,
+        ]);
+    }
+
     public function stats(): JsonResponse
     {
         $total = Player::query()->count();
@@ -476,6 +602,92 @@ class PlayerController extends Controller
     }
 
     /**
+     * Import waiver wire rankings from plain text (one player name per line).
+     * Line position = rank. Type specifies the position being imported.
+     * Clears existing waiver_rank for players of this position before importing.
+     */
+    public function importWaiverRankings(Request $request): JsonResponse
+    {
+        $request->validate([
+            'data' => ['required', 'string', 'min:2'],
+            'type' => ['required', 'string', 'in:OVR,QB,RB,WR,TE,K,DST'],
+        ]);
+
+        $type = $request->input('type');
+
+        $lines = array_values(array_filter(
+            array_map('trim', explode("\n", $request->input('data'))),
+            fn ($l) => $l !== ''
+        ));
+
+        // Strip leading numbering like "1." or "2)" from each line
+        $lines = array_map(fn ($l) => preg_replace('/^\d+[\.\)]\s*/', '', $l), $lines);
+
+        if (empty($lines)) {
+            return response()->json(['message' => 'No data provided.'], 422);
+        }
+
+        // Clear existing rankings for this type
+        if ($type === 'OVR') {
+            Player::query()->update(['waiver_rank_overall' => null]);
+        } else {
+            Player::whereJsonContains('positions', $type)->update(['waiver_rank' => null]);
+        }
+
+        $allPlayers = Player::all();
+        $playerByName = [];
+        foreach ($allPlayers as $p) {
+            $playerByName[$this->normalizePlayerName($p->name)] = $p;
+            if ($p->alternate_name) {
+                $playerByName[$this->normalizePlayerName($p->alternate_name)] = $p;
+            }
+        }
+
+        // Build DST franchise lookup for DST and OVR types
+        $dstLookup = [];
+        if ($type === 'DST' || $type === 'OVR') {
+            $franchises = IrlFranchise::all();
+            foreach ($franchises as $f) {
+                $dstPlayer = $allPlayers->first(fn ($p) => $p->irl_franchise_id === $f->id
+                    && in_array('DST', $p->positions ?? [], true));
+                if ($dstPlayer) {
+                    foreach (['name', 'abbreviated_name', 'alternate_name', 'alternate_abbreviated_name'] as $field) {
+                        if ($f->$field) {
+                            $dstLookup[$this->normalizePlayerName($f->$field)] = $dstPlayer;
+                        }
+                    }
+                }
+            }
+        }
+
+        $updated = 0;
+        $notFound = [];
+        $rankField = $type === 'OVR' ? 'waiver_rank_overall' : 'waiver_rank';
+
+        foreach ($lines as $idx => $name) {
+            $rank = $idx + 1;
+            $normalized = $this->normalizePlayerName($name);
+
+            // Try player name lookup first, then DST franchise lookup
+            $player = $playerByName[$normalized] ?? $dstLookup[$normalized] ?? null;
+
+            if (!$player) {
+                $notFound[] = ['rank' => $rank, 'name' => $name];
+                continue;
+            }
+
+            $player->update([$rankField => $rank]);
+            $updated++;
+        }
+
+        return response()->json([
+            'updated' => $updated,
+            'not_found' => $notFound,
+            'total_lines' => count($lines),
+        ]);
+    }
+
+    /**
      * Fetch player IDs from the Fantrax API and match them to players in our database.
      * Matches by normalised player name; uses position as a tiebreaker when multiple
      * DB players share the same name.  Returns an updated count and the list of DB
@@ -701,6 +913,142 @@ class PlayerController extends Controller
             'D/ST' => 'DST',
         ];
         return $map[strtoupper(trim($pos))] ?? null;
+    }
+
+    /**
+     * List all players flagged as do-not-roster.
+     */
+    public function doNotRosterList(): JsonResponse
+    {
+        $players = Player::where('do_not_roster', true)
+            ->with('irlFranchise')
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($p) => [
+                'id'                  => $p->id,
+                'name'                => $p->name,
+                'positions'           => $p->positions ?? [],
+                'irl_franchise_name'  => $p->irlFranchise?->name,
+                'irl_franchise_abbr'  => $p->irlFranchise?->abbreviated_name,
+                'bye_week'            => $p->irlFranchise?->bye_week,
+            ]);
+
+        return response()->json(['data' => $players]);
+    }
+
+    /**
+     * Add players to the do-not-roster list by pasting names (one per line).
+     */
+    public function doNotRosterAdd(Request $request): JsonResponse
+    {
+        $request->validate([
+            'data' => ['required', 'string', 'min:2'],
+        ]);
+
+        $lines = array_values(array_filter(
+            array_map('trim', explode("\n", $request->input('data'))),
+            fn ($l) => $l !== ''
+        ));
+
+        // Strip leading numbering like "1." or "2)"
+        $lines = array_map(fn ($l) => preg_replace('/^\d+[\.\)]\s*/', '', $l), $lines);
+
+        if (empty($lines)) {
+            return response()->json(['message' => 'No data provided.'], 422);
+        }
+
+        $allPlayers = Player::all();
+        $playerByName = [];
+        foreach ($allPlayers as $p) {
+            $playerByName[$this->normalizePlayerName($p->name)] = $p;
+            if ($p->alternate_name) {
+                $playerByName[$this->normalizePlayerName($p->alternate_name)] = $p;
+            }
+        }
+
+        $updated = 0;
+        $notFound = [];
+
+        foreach ($lines as $idx => $name) {
+            $normalized = $this->normalizePlayerName($name);
+            $player = $playerByName[$normalized] ?? null;
+
+            if (!$player) {
+                $notFound[] = ['rank' => $idx + 1, 'name' => $name];
+                continue;
+            }
+
+            if (!$player->do_not_roster) {
+                $player->update(['do_not_roster' => true]);
+            }
+            $updated++;
+        }
+
+        return response()->json([
+            'updated'     => $updated,
+            'not_found'   => $notFound,
+            'total_lines' => count($lines),
+        ]);
+    }
+
+    /**
+     * Remove a single player from the do-not-roster list.
+     */
+    public function doNotRosterRemove(Player $player): JsonResponse
+    {
+        $player->update(['do_not_roster' => false]);
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * Reset all players' do-not-roster flag to false.
+     */
+    public function doNotRosterReset(): JsonResponse
+    {
+        $count = Player::where('do_not_roster', true)->update(['do_not_roster' => false]);
+
+        return response()->json(['cleared' => $count]);
+    }
+
+    /**
+     * Get teams (my teams) that have do-not-roster players on their roster.
+     */
+    public function doNotRosterTeams(): JsonResponse
+    {
+        $dnrPlayerIds = Player::where('do_not_roster', true)->pluck('id')->toArray();
+
+        if (empty($dnrPlayerIds)) {
+            return response()->json(['data' => []]);
+        }
+
+        $myTeams = \App\Models\Team::where('my_team', true)
+            ->with('league')
+            ->get();
+
+        $myTeamIds = $myTeams->pluck('id')->toArray();
+
+        if (empty($myTeamIds)) {
+            return response()->json(['data' => []]);
+        }
+
+        $slots = \App\Models\LineupSlot::whereIn('team_id', $myTeamIds)
+            ->whereIn('player_id', $dnrPlayerIds)
+            ->get();
+
+        $teamIdsWithDnr = $slots->pluck('team_id')->unique()->toArray();
+
+        $results = $myTeams
+            ->filter(fn ($t) => in_array($t->id, $teamIdsWithDnr, true))
+            ->map(fn ($t) => [
+                'team_id'     => $t->id,
+                'team_name'   => $t->name,
+                'league_id'   => $t->league_id,
+                'league_name' => $t->league?->name,
+            ])
+            ->values();
+
+        return response()->json(['data' => $results]);
     }
 
     private function normalizeForMatch(string $value): string

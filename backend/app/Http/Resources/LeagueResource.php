@@ -26,6 +26,9 @@ class LeagueResource extends JsonResource
                     ]);
             }),
             'requires_waiver_claim' => $this->requires_waiver_claim,
+            'requires_roster_moves' => $this->requires_roster_moves,
+            'requires_roster_optimised' => $this->requires_roster_optimised,
+            'requires_thursday_update' => $this->requires_thursday_update,
             'teams_updated_at' => $this->teams_updated_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),

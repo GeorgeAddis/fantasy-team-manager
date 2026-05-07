@@ -21,6 +21,12 @@ export const queryKeys = {
     list: (params) => ['players', 'list', params],
     detail: (id) => ['players', 'detail', id],
     stats: ['players', 'stats'],
+    searchMyTeams: (params) => ['players', 'searchMyTeams', params],
+    doNotRoster: ['players', 'doNotRoster'],
+    doNotRosterTeams: ['players', 'doNotRosterTeams'],
+  },
+  settings: {
+    all: ['settings'],
   },
   lineupSlots: {
     all: ['lineup-slots'],

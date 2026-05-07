@@ -10,6 +10,7 @@ import {
   Typography,
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
+import ErrorIcon from '@mui/icons-material/Error'
 import { useTeamRoster } from '@/hooks/useTeams'
 
 const STARTER_POSITIONS = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'WR3', 'TE', 'RWT', 'K', 'DST']
@@ -73,6 +74,9 @@ function SlotRow({ slot }) {
       />
       {player ? (
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+          {player.do_not_roster && (
+            <ErrorIcon sx={{ fontSize: 16, color: 'error.main', flexShrink: 0 }} />
+          )}
           <Typography
             variant="body2"
             sx={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}

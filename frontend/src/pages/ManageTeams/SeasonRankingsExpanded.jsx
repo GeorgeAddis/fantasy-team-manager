@@ -32,17 +32,25 @@ function displayName(player) {
   return `${player.name} (${label})`
 }
 
-function positionRankLabel(player) {
+function posPrefix(player) {
   const pos = player.positions?.[0] ?? ''
-  const rank = player.season_position_rank
-  if (!rank || rank >= 999) return pos
-  return `${pos}${rank}`
+  return pos === 'DST' ? 'D' : pos
+}
+
+function formatPosRank(player, rank) {
+  if (rank == null || rank >= 999) return '—'
+  return `${posPrefix(player)}${rank}`
+}
+
+function formatRank(rank) {
+  if (rank == null || rank >= 999) return '—'
+  return rank
 }
 
 const HEADER_SX = {
   fontWeight: 700,
   color: 'text.secondary',
-  fontSize: '0.8rem',
+  fontSize: '0.7rem',
 }
 
 const CELL_SX = {
@@ -52,14 +60,14 @@ const CELL_SX = {
   whiteSpace: 'nowrap',
 }
 
-function byeTextColor(byeWeek, currentWeek, isMine) {
-  if (!byeWeek || !currentWeek) return isMine ? 'secondary.main' : 'text.primary'
-  if (byeWeek === currentWeek) return 'error.main'
-  if (byeWeek === currentWeek + 1) return 'info.light'
-  return isMine ? 'secondary.main' : 'text.primary'
+function byeRowColor(byeWeek, currentWeek) {
+  if (!byeWeek || !currentWeek) return undefined
+  if (byeWeek === currentWeek) return 'rgba(211,47,47,0.15)'
+  if (byeWeek === currentWeek + 1) return 'rgba(33,150,243,0.15)'
+  return undefined
 }
 
-export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0 }) {
+export default function SeasonRankingsExpanded({ leagueId, teamId, currentWeek = 0 }) {
   const [positions, setPositions] = useState(['QB'])
   const { data, isLoading } = useWaiverBoard(leagueId, teamId)
 
@@ -81,12 +89,7 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
 
     if (available.length === 0) return myPlayers.sort((a, b) => a.season_rank - b.season_rank)
 
-    const bestAvailableRank = available[0].season_rank
-
     // Only show available players ranked better than my best, plus 10 after my worst
-    const availableAboveBest = available.filter((p) => p.season_rank < (myPlayers[0]?.season_rank ?? Infinity))
-
-    // Cut off available players 10 spots after my worst ranked player
     let cutoffRank = null
     if (myPlayers.length > 0) {
       const worstMyRank = Math.max(...myPlayers.map((p) => p.season_rank))
@@ -95,7 +98,6 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
         cutoffRank = availableBeyond[9].season_rank
       }
     } else {
-      // None of my players in this position range — show top 30 available
       if (available.length > 30) {
         cutoffRank = available[29].season_rank
       }
@@ -105,7 +107,6 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
       ? available.filter((p) => p.season_rank <= cutoffRank)
       : available
 
-    // Merge all my players + filtered available, sort by season_rank
     const merged = [...myPlayers, ...availableFiltered]
     merged.sort((a, b) => a.season_rank - b.season_rank)
 
@@ -132,7 +133,8 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: '50px 1fr 50px 60px',
+              gridTemplateColumns: '1fr 40px 55px 40px 55px 35px',
+              gap: 0.5,
               px: 1.5,
               py: 0.75,
               bgcolor: 'background.paper',
@@ -140,52 +142,54 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
               borderColor: 'divider',
             }}
           >
-            <Typography sx={HEADER_SX}>Rank</Typography>
             <Typography sx={HEADER_SX}>Name</Typography>
-            <Typography sx={HEADER_SX}>Bye</Typography>
-            <Typography sx={HEADER_SX}>Pos</Typography>
+            <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>SZN</Typography>
+            <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>SPos</Typography>
+            <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Wk</Typography>
+            <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>WPos</Typography>
+            <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Bye</Typography>
           </Box>
 
           <Box sx={{ maxHeight: 520, overflowY: 'auto' }}>
-            {rows.map((row) => (
-              <Box
-                key={row.id}
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: '50px 1fr 50px 60px',
-                  px: 1.5,
-                  py: 0.5,
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  bgcolor: row._mine ? 'rgba(212,165,116,0.12)' : 'transparent',
-                }}
-              >
-                {(() => {
-                  const byeColor = byeTextColor(row.bye_week, currentWeek, row._mine)
-                  const defaultColor = row._mine ? 'secondary.main' : 'text.primary'
-                  const secondaryColor = row._mine ? 'secondary.main' : 'text.secondary'
-                  const isBye = byeColor !== defaultColor
-                  const textColor = isBye ? byeColor : defaultColor
-                  const subColor = isBye ? byeColor : secondaryColor
-                  return (
-                    <>
-                      <Typography variant="body2" sx={{ ...CELL_SX, fontWeight: 700, color: textColor }}>
-                        {row.season_rank}
-                      </Typography>
-                      <Typography variant="body2" sx={{ ...CELL_SX, color: textColor }}>
-                        {displayName(row)}
-                      </Typography>
-                      <Typography variant="body2" sx={{ ...CELL_SX, color: subColor }}>
-                        {row.bye_week ?? '—'}
-                      </Typography>
-                      <Typography variant="body2" sx={{ ...CELL_SX, color: subColor }}>
-                        {positionRankLabel(row)}
-                      </Typography>
-                    </>
-                  )
-                })()}
-              </Box>
-            ))}
+            {rows.map((row) => {
+              const bgColor = row._mine
+                ? (byeRowColor(row.bye_week, currentWeek) ?? 'rgba(212,165,116,0.12)')
+                : (byeRowColor(row.bye_week, currentWeek) ?? 'transparent')
+              return (
+                <Box
+                  key={row.id}
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 40px 55px 40px 55px 35px',
+                    gap: 0.5,
+                    px: 1.5,
+                    py: 0.5,
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    bgcolor: bgColor,
+                  }}
+                >
+                  <Typography variant="body2" sx={{ ...CELL_SX, color: row._mine ? 'secondary.main' : 'text.primary' }}>
+                    {displayName(row)}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', textAlign: 'right' }}>
+                    {formatRank(row.season_rank)}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', textAlign: 'right' }}>
+                    {formatPosRank(row, row.season_position_rank)}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', textAlign: 'right' }}>
+                    {formatRank(row.week_rank)}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', textAlign: 'right' }}>
+                    {formatPosRank(row, row.week_position_rank)}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', textAlign: 'right' }}>
+                    {row.bye_week ?? '—'}
+                  </Typography>
+                </Box>
+              )
+            })}
           </Box>
         </Box>
       )}

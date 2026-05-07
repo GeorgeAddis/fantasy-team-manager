@@ -23,7 +23,9 @@ import SyncIcon from '@mui/icons-material/Sync'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import CloseIcon from '@mui/icons-material/Close'
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
+import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import GavelIcon from '@mui/icons-material/Gavel'
+import TuneIcon from '@mui/icons-material/Tune'
 import RosterDialog from '@/components/RosterDialog'
 import PasteDataDialog from '@/components/PasteDataDialog'
 import { useUpdateRosters } from '@/hooks/useLeagues'
@@ -153,7 +155,7 @@ const HEAD_CELL = { fontWeight: 700, color: 'text.secondary' }
  * rows: [{ league, myTeam, analysis }]
  * variant: 'all' | 'require-lineup-change'
  */
-export default function TeamsTable({ rows, isLoading, variant, onMakeClaims }) {
+export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onMakeAdds, onOptimise, onThursdayUpdate }) {
   const [rosterTarget, setRosterTarget] = useState(null)
   const [changesTarget, setChangesTarget] = useState(null)
   const [updateTarget, setUpdateTarget] = useState(null)
@@ -161,7 +163,10 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims }) {
   const rosterMutation = useUpdateRosters()
 
   const isLineupChange = variant === 'require-lineup-change'
+  const isRosterMoves = variant === 'require-roster-moves'
+  const isRosterOpt = variant === 'roster-optimisation'
   const isWaiverClaims = variant === 'require-waiver-claims'
+  const isThursdayUpdate = variant === 'thursday-update'
 
   function openUpdateDialog(league) {
     setUpdateTarget(league)
@@ -196,9 +201,15 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims }) {
       <Typography color="text.secondary" sx={{ mt: 3 }}>
         {isLineupChange
           ? 'No teams require a lineup change this week.'
-          : isWaiverClaims
-            ? 'No leagues require waiver claims.'
-            : 'No leagues found. Create one in the Setup tab first.'}
+          : isRosterMoves
+            ? 'No teams require roster moves.'
+            : isRosterOpt
+              ? 'No leagues require roster optimisation.'
+              : isWaiverClaims
+                ? 'No leagues require waiver claims.'
+                : isThursdayUpdate
+                  ? 'No leagues require a Thursday update.'
+              : 'No leagues found. Create one in the Setup tab first.'}
       </Typography>
     )
   }
@@ -209,7 +220,7 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims }) {
         component={Paper}
         elevation={0}
         sx={{
-          maxWidth: isLineupChange ? 960 : 800,
+          maxWidth: (isLineupChange || isRosterMoves || isRosterOpt || isThursdayUpdate) ? 960 : 800,
           width: '100%',
           border: '1px solid',
           borderColor: 'divider',
@@ -221,25 +232,28 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims }) {
               <TableCell sx={HEAD_CELL}>League</TableCell>
               <TableCell sx={HEAD_CELL}>Last Updated</TableCell>
               {isLineupChange && <TableCell sx={HEAD_CELL}>Suggested Changes</TableCell>}
+              {isRosterMoves && <TableCell sx={HEAD_CELL}>Suggested Adds</TableCell>}
+              {isRosterOpt && <TableCell sx={HEAD_CELL}>Optimise Roster</TableCell>}
+              {isThursdayUpdate && <TableCell sx={HEAD_CELL}>Thursday Update</TableCell>}
               <TableCell sx={HEAD_CELL}>Roster</TableCell>
               <TableCell sx={HEAD_CELL}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map(({ league, myTeam, analysis }) => (
+            {rows.map(({ league, myTeam, analysis, rosterAdd }) => (
               <TableRow key={league.id} sx={{ '&:last-child td': { borderBottom: 0 }, verticalAlign: 'top' }}>
                 <TableCell>
-                  <Typography variant="body2" fontWeight={600} sx={{ pt: isLineupChange ? 0.5 : 0 }}>
+                  <Typography variant="body2" fontWeight={600} sx={{ pt: (isLineupChange || isRosterMoves || isRosterOpt || isThursdayUpdate) ? 0.5 : 0 }}>
                     {league.name}
                   </Typography>
                 </TableCell>
                 <TableCell>
                   {league.teams_updated_at ? (
-                    <Typography variant="body2" sx={{ pt: isLineupChange ? 0.5 : 0 }}>
+                    <Typography variant="body2" sx={{ pt: (isLineupChange || isRosterMoves || isRosterOpt || isThursdayUpdate) ? 0.5 : 0 }}>
                       {formatUpdatedAt(league.teams_updated_at)}
                     </Typography>
                   ) : (
-                    <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary', pt: isLineupChange ? 0.5 : 0 }}>
+                    <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary', pt: (isLineupChange || isRosterMoves || isRosterOpt) ? 0.5 : 0 }}>
                       Never
                     </Typography>
                   )}
@@ -258,6 +272,57 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims }) {
                       }}
                     >
                       View Changes
+                    </Button>
+                  </TableCell>
+                )}
+                {isRosterMoves && (
+                  <TableCell>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<PersonAddIcon />}
+                      onClick={() => onMakeAdds?.({ league, myTeam, rosterAdd })}
+                      sx={{
+                        textTransform: 'none',
+                        bgcolor: 'primary.main',
+                        '&:hover': { bgcolor: 'primary.dark' },
+                      }}
+                    >
+                      Make Adds
+                    </Button>
+                  </TableCell>
+                )}
+                {isRosterOpt && (
+                  <TableCell>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<TuneIcon />}
+                      onClick={() => onOptimise?.({ league, myTeam })}
+                      sx={{
+                        textTransform: 'none',
+                        bgcolor: 'primary.main',
+                        '&:hover': { bgcolor: 'primary.dark' },
+                      }}
+                    >
+                      Optimise
+                    </Button>
+                  </TableCell>
+                )}
+                {isThursdayUpdate && (
+                  <TableCell>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<SyncIcon />}
+                      onClick={() => onThursdayUpdate?.({ league, myTeam, analysis, rosterAdd })}
+                      sx={{
+                        textTransform: 'none',
+                        bgcolor: 'primary.main',
+                        '&:hover': { bgcolor: 'primary.dark' },
+                      }}
+                    >
+                      Update
                     </Button>
                   </TableCell>
                 )}

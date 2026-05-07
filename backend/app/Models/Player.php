@@ -18,6 +18,9 @@ class Player extends Model
         'season_rank',
         'season_position_rank',
         'positions',
+        'waiver_rank',
+        'waiver_rank_overall',
+        'do_not_roster',
     ];
 
     protected function casts(): array
@@ -28,6 +31,9 @@ class Player extends Model
             'week_position_rank' => 'integer',
             'season_rank' => 'integer',
             'season_position_rank' => 'integer',
+            'waiver_rank' => 'integer',
+            'waiver_rank_overall' => 'integer',
+            'do_not_roster' => 'boolean',
         ];
     }
 

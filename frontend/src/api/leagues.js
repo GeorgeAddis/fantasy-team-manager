@@ -39,6 +39,21 @@ export function flagWaiverClaims() {
 }
 
 /** @returns {Promise<object>} */
+export function flagRosterMoves() {
+  return apiFetch(`${path}/flag-roster-moves`, { method: 'POST' })
+}
+
+/** @returns {Promise<object>} */
+export function flagRosterOptimisation() {
+  return apiFetch(`${path}/flag-roster-optimisation`, { method: 'POST' })
+}
+
+/** @returns {Promise<object>} */
+export function flagThursdayUpdate() {
+  return apiFetch(`${path}/flag-thursday-update`, { method: 'POST' })
+}
+
+/** @returns {Promise<object>} */
 export function updateRosters(leagueId, data) {
   return apiFetch(`${path}/${leagueId}/update-rosters`, {
     method: 'POST',

@@ -18,6 +18,17 @@ function matchesPosition(playerPositions, position) {
   return playerPositions.includes(position)
 }
 
+const LINEUP_LABEL = {
+  QB: 'QB', RB1: 'RB', RB2: 'RB', WR1: 'WR', WR2: 'WR', WR3: 'WR',
+  TE: 'TE', RWT: 'FLEX', K: 'K', DST: 'DST', BN: 'BN',
+}
+
+function displayName(player) {
+  if (!player._mine) return player.name
+  const label = LINEUP_LABEL[player.lineup_position] ?? player.lineup_position
+  return `${player.name} (${label})`
+}
+
 function positionRankLabel(player) {
   const pos = (player.positions ?? []).find((p) => ['RB', 'WR', 'TE'].includes(p)) ?? player.positions?.[0] ?? ''
   const rank = player.week_position_rank
@@ -38,7 +49,14 @@ const CELL_SX = {
   whiteSpace: 'nowrap',
 }
 
-export default function WeekRankingsColumn({ leagueId, teamId }) {
+function byeTextColor(byeWeek, currentWeek, isMine) {
+  if (!byeWeek || !currentWeek) return isMine ? 'secondary.main' : 'text.primary'
+  if (byeWeek === currentWeek) return 'error.main'
+  if (byeWeek === currentWeek + 1) return 'info.light'
+  return isMine ? 'secondary.main' : 'text.primary'
+}
+
+export default function WeekRankingsColumn({ leagueId, teamId, currentWeek = 0 }) {
   const [position, setPosition] = useState('QB')
   const { data, isLoading } = useWaiverBoard(leagueId, teamId)
 
@@ -134,32 +152,32 @@ export default function WeekRankingsColumn({ leagueId, teamId }) {
                   bgcolor: row._mine ? 'rgba(212,165,116,0.12)' : 'transparent',
                 }}
               >
-                <Typography
-                  variant="body2"
-                  sx={{ ...CELL_SX, fontWeight: 700, color: row._mine ? 'secondary.main' : 'text.primary' }}
-                >
-                  {row._rank}
-                </Typography>
-                <Typography
-                  variant="body2"
-                  sx={{ ...CELL_SX, color: row._mine ? 'secondary.main' : 'text.primary' }}
-                >
-                  {row.name}
-                </Typography>
-                <Typography
-                  variant="body2"
-                  sx={{ ...CELL_SX, color: row._mine ? 'secondary.main' : 'text.secondary' }}
-                >
-                  {row.bye_week ?? '—'}
-                </Typography>
-                {isRwt && (
-                  <Typography
-                    variant="body2"
-                    sx={{ ...CELL_SX, color: row._mine ? 'secondary.main' : 'text.secondary' }}
-                  >
-                    {positionRankLabel(row)}
-                  </Typography>
-                )}
+                {(() => {
+                  const byeColor = byeTextColor(row.bye_week, currentWeek, row._mine)
+                  const defaultColor = row._mine ? 'secondary.main' : 'text.primary'
+                  const secondaryColor = row._mine ? 'secondary.main' : 'text.secondary'
+                  const isBye = byeColor !== defaultColor
+                  const textColor = isBye ? byeColor : defaultColor
+                  const subColor = isBye ? byeColor : secondaryColor
+                  return (
+                    <>
+                      <Typography variant="body2" sx={{ ...CELL_SX, fontWeight: 700, color: textColor }}>
+                        {row._rank}
+                      </Typography>
+                      <Typography variant="body2" sx={{ ...CELL_SX, color: textColor }}>
+                        {displayName(row)}
+                      </Typography>
+                      <Typography variant="body2" sx={{ ...CELL_SX, color: subColor }}>
+                        {row.bye_week ?? '—'}
+                      </Typography>
+                      {isRwt && (
+                        <Typography variant="body2" sx={{ ...CELL_SX, color: subColor }}>
+                          {positionRankLabel(row)}
+                        </Typography>
+                      )}
+                    </>
+                  )
+                })()}
               </Box>
             ))}
           </Box>

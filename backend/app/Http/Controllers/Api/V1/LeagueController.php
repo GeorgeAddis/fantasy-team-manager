@@ -62,6 +62,36 @@ class LeagueController extends Controller
     }
 
     /**
+     * Set requires_roster_moves = true on all leagues.
+     */
+    public function flagRosterMoves(): JsonResponse
+    {
+        $count = League::query()->update(['requires_roster_moves' => true]);
+
+        return response()->json(['leagues_flagged' => $count]);
+    }
+
+    /**
+     * Set requires_roster_optimised = true on all leagues.
+     */
+    public function flagRosterOptimisation(): JsonResponse
+    {
+        $count = League::query()->update(['requires_roster_optimised' => true]);
+
+        return response()->json(['leagues_flagged' => $count]);
+    }
+
+    /**
+     * Set requires_thursday_update = true on all leagues.
+     */
+    public function flagThursdayUpdate(): JsonResponse
+    {
+        $count = League::query()->update(['requires_thursday_update' => true]);
+
+        return response()->json(['leagues_flagged' => $count]);
+    }
+
+    /**
      * Return available (unrostered) players and the requesting team's players
      * for waiver claim comparison.
      */
@@ -96,6 +126,8 @@ class LeagueController extends Controller
                 'season_position_rank'  => $s->player->season_position_rank,
                 'week_rank'             => $s->player->week_rank,
                 'week_position_rank'    => $s->player->week_position_rank,
+                'waiver_rank'           => $s->player->waiver_rank,
+                'waiver_rank_overall'   => $s->player->waiver_rank_overall,
                 'irl_franchise_abbr'    => $s->player->irlFranchise?->abbreviated_name,
                 'bye_week'              => $s->player->irlFranchise?->bye_week,
                 'lineup_position'       => $s->lineup_position->value,
@@ -110,7 +142,9 @@ class LeagueController extends Controller
                 $q->whereNotNull('season_rank')
                   ->orWhereNotNull('season_position_rank')
                   ->orWhereNotNull('week_rank')
-                  ->orWhereNotNull('week_position_rank');
+                  ->orWhereNotNull('week_position_rank')
+                  ->orWhereNotNull('waiver_rank')
+                  ->orWhereNotNull('waiver_rank_overall');
             })
             ->get()
             ->map(fn ($p) => [
@@ -121,6 +155,8 @@ class LeagueController extends Controller
                 'season_position_rank'  => $p->season_position_rank,
                 'week_rank'             => $p->week_rank,
                 'week_position_rank'    => $p->week_position_rank,
+                'waiver_rank'           => $p->waiver_rank,
+                'waiver_rank_overall'   => $p->waiver_rank_overall,
                 'irl_franchise_abbr'    => $p->irlFranchise?->abbreviated_name,
                 'bye_week'              => $p->irlFranchise?->bye_week,
             ]);

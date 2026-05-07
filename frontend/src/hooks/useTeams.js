@@ -43,6 +43,13 @@ export function useTeamLineupAnalysis() {
   })
 }
 
+export function useTeamRosterAddAnalysis() {
+  return useQuery({
+    queryKey: [...queryKeys.teams.all, 'roster-add-analysis'],
+    queryFn: () => teamsApi.getTeamRosterAddAnalysis(),
+  })
+}
+
 export function useTeamRoster(id, options = {}) {
   return useQuery({
     queryKey: queryKeys.teams.roster(id),

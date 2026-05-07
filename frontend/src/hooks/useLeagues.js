@@ -31,7 +31,22 @@ export function useUpdateLeague() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...body }) => leaguesApi.updateLeague(id, body),
-    onSuccess: (_, { id }) => {
+    onMutate: async ({ id, ...body }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.leagues.all })
+      const listKey = queryKeys.leagues.list({})
+      const prev = qc.getQueryData(listKey)
+      if (prev?.data) {
+        qc.setQueryData(listKey, {
+          ...prev,
+          data: prev.data.map((l) => (l.id === id ? { ...l, ...body } : l)),
+        })
+      }
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.leagues.list({}), ctx.prev)
+    },
+    onSettled: (_, __, { id }) => {
       qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
       qc.invalidateQueries({ queryKey: queryKeys.leagues.detail(id) })
     },
@@ -60,7 +75,97 @@ export function useFlagWaiverClaims() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => leaguesApi.flagWaiverClaims(),
-    onSuccess: () => {
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.leagues.all })
+      const listKey = queryKeys.leagues.list({})
+      const prev = qc.getQueryData(listKey)
+      if (prev?.data) {
+        qc.setQueryData(listKey, {
+          ...prev,
+          data: prev.data.map((l) => ({ ...l, requires_waiver_claim: true })),
+        })
+      }
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.leagues.list({}), ctx.prev)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+    },
+  })
+}
+
+export function useFlagRosterMoves() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => leaguesApi.flagRosterMoves(),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.leagues.all })
+      const listKey = queryKeys.leagues.list({})
+      const prev = qc.getQueryData(listKey)
+      if (prev?.data) {
+        qc.setQueryData(listKey, {
+          ...prev,
+          data: prev.data.map((l) => ({ ...l, requires_roster_moves: true })),
+        })
+      }
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.leagues.list({}), ctx.prev)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+    },
+  })
+}
+
+export function useFlagRosterOptimisation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => leaguesApi.flagRosterOptimisation(),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.leagues.all })
+      const listKey = queryKeys.leagues.list({})
+      const prev = qc.getQueryData(listKey)
+      if (prev?.data) {
+        qc.setQueryData(listKey, {
+          ...prev,
+          data: prev.data.map((l) => ({ ...l, requires_roster_optimised: true })),
+        })
+      }
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.leagues.list({}), ctx.prev)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+    },
+  })
+}
+
+export function useFlagThursdayUpdate() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => leaguesApi.flagThursdayUpdate(),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.leagues.all })
+      const listKey = queryKeys.leagues.list({})
+      const prev = qc.getQueryData(listKey)
+      if (prev?.data) {
+        qc.setQueryData(listKey, {
+          ...prev,
+          data: prev.data.map((l) => ({ ...l, requires_thursday_update: true })),
+        })
+      }
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.leagues.list({}), ctx.prev)
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
     },
   })

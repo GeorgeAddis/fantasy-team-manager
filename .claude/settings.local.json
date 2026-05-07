@@ -3,7 +3,11 @@
     "allow": [
       "WebFetch(domain:www.fantrax.com)",
       "Bash(docker compose:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(xargs grep:*)",
+      "Bash(find frontend/src -type f \\\\\\( -name \"*.jsx\" -o -name \"*.js\" \\\\\\) -exec grep -l \"usePlayerList\\\\|listPlayers\" {} \\\\;)",
+      "Bash(php artisan:*)",
+      "Bash(npx eslint:*)"
     ]
   }
 }

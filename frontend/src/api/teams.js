@@ -27,6 +27,10 @@ export function getTeamLineupAnalysis() {
   return apiFetch(`${path}/lineup-analysis`)
 }
 
+export function getTeamRosterAddAnalysis() {
+  return apiFetch(`${path}/roster-add-analysis`)
+}
+
 export function getTeamRoster(id) {
   return apiFetch(`${path}/${id}/roster`)
 }

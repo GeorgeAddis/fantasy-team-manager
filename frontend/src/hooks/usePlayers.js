@@ -81,6 +81,100 @@ export function useImportRankings() {
   })
 }
 
+export function useImportWaiverRankings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ data, type }) => api.importWaiverRankings(data, type),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.players.all })
+    },
+  })
+}
+
+export function useSearchMyTeams(params = {}, options = {}) {
+  return useQuery({
+    queryKey: queryKeys.players.searchMyTeams(params),
+    queryFn: () => api.searchMyTeams(params),
+    enabled: !!params.search && options.enabled !== false,
+  })
+}
+
+export function useDoNotRosterList() {
+  return useQuery({
+    queryKey: queryKeys.players.doNotRoster,
+    queryFn: () => api.listDoNotRoster(),
+  })
+}
+
+export function useDoNotRosterTeams() {
+  return useQuery({
+    queryKey: queryKeys.players.doNotRosterTeams,
+    queryFn: () => api.listDoNotRosterTeams(),
+  })
+}
+
+export function useAddDoNotRoster() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ data }) => api.addDoNotRoster(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.players.doNotRoster })
+      qc.invalidateQueries({ queryKey: queryKeys.players.doNotRosterTeams })
+      qc.invalidateQueries({ queryKey: queryKeys.players.all })
+      qc.invalidateQueries({ queryKey: queryKeys.teams.all })
+    },
+  })
+}
+
+export function useRemoveDoNotRoster() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (playerId) => api.removeDoNotRoster(playerId),
+    onMutate: async (playerId) => {
+      await qc.cancelQueries({ queryKey: queryKeys.players.doNotRoster })
+      const prev = qc.getQueryData(queryKeys.players.doNotRoster)
+      if (prev?.data) {
+        qc.setQueryData(queryKeys.players.doNotRoster, {
+          ...prev,
+          data: prev.data.filter((p) => p.id !== playerId),
+        })
+      }
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.players.doNotRoster, ctx.prev)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.players.doNotRoster })
+      qc.invalidateQueries({ queryKey: queryKeys.players.doNotRosterTeams })
+      qc.invalidateQueries({ queryKey: queryKeys.players.all })
+      qc.invalidateQueries({ queryKey: queryKeys.teams.all })
+    },
+  })
+}
+
+export function useResetDoNotRoster() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.resetDoNotRoster(),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.players.doNotRoster })
+      const prev = qc.getQueryData(queryKeys.players.doNotRoster)
+      qc.setQueryData(queryKeys.players.doNotRoster, { data: [] })
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.players.doNotRoster, ctx.prev)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.players.doNotRoster })
+      qc.invalidateQueries({ queryKey: queryKeys.players.doNotRosterTeams })
+      qc.invalidateQueries({ queryKey: queryKeys.players.all })
+      qc.invalidateQueries({ queryKey: queryKeys.teams.all })
+    },
+  })
+}
+
 export function useImportSeasonRankings() {
   const qc = useQueryClient()
   return useMutation({
