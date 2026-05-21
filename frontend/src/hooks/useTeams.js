@@ -50,6 +50,13 @@ export function useTeamRosterAddAnalysis() {
   })
 }
 
+export function useTeamPreSeasonOptimiseAnalysis() {
+  return useQuery({
+    queryKey: [...queryKeys.teams.all, 'pre-season-optimise-analysis'],
+    queryFn: () => teamsApi.getTeamPreSeasonOptimiseAnalysis(),
+  })
+}
+
 export function useTeamRoster(id, options = {}) {
   return useQuery({
     queryKey: queryKeys.teams.roster(id),

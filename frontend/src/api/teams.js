@@ -31,6 +31,10 @@ export function getTeamRosterAddAnalysis() {
   return apiFetch(`${path}/roster-add-analysis`)
 }
 
+export function getTeamPreSeasonOptimiseAnalysis() {
+  return apiFetch(`${path}/pre-season-optimise-analysis`)
+}
+
 export function getTeamRoster(id) {
   return apiFetch(`${path}/${id}/roster`)
 }

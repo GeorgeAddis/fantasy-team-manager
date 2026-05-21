@@ -92,6 +92,16 @@ class LeagueController extends Controller
     }
 
     /**
+     * Set requires_pre_season_optimised = true on all leagues.
+     */
+    public function flagPreSeasonOptimisation(): JsonResponse
+    {
+        $count = League::query()->update(['requires_pre_season_optimised' => true]);
+
+        return response()->json(['leagues_flagged' => $count]);
+    }
+
+    /**
      * Return available (unrostered) players and the requesting team's players
      * for waiver claim comparison.
      */

@@ -7,7 +7,11 @@
       "Bash(xargs grep:*)",
       "Bash(find frontend/src -type f \\\\\\( -name \"*.jsx\" -o -name \"*.js\" \\\\\\) -exec grep -l \"usePlayerList\\\\|listPlayers\" {} \\\\;)",
       "Bash(php artisan:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(where.exe php *)",
+      "Read(//c/xampp/php/**)",
+      "Read(//c/php/**)",
+      "Read(//c/Program Files/PHP/**)"
     ]
   }
 }

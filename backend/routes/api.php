@@ -17,11 +17,13 @@ Route::prefix('v1')->group(function () {
     Route::post('leagues/flag-roster-moves', [LeagueController::class, 'flagRosterMoves']);
     Route::post('leagues/flag-roster-optimisation', [LeagueController::class, 'flagRosterOptimisation']);
     Route::post('leagues/flag-thursday-update', [LeagueController::class, 'flagThursdayUpdate']);
+    Route::post('leagues/flag-pre-season-optimisation', [LeagueController::class, 'flagPreSeasonOptimisation']);
     Route::get('leagues/{league}/waiver-board', [LeagueController::class, 'waiverBoard']);
     Route::post('leagues/{league}/update-rosters', [LeagueController::class, 'updateRosters']);
     Route::apiResource('leagues', LeagueController::class);
     Route::get('teams/lineup-analysis', [TeamController::class, 'lineupAnalysis']);
     Route::get('teams/roster-add-analysis', [TeamController::class, 'rosterAddAnalysis']);
+    Route::get('teams/pre-season-optimise-analysis', [TeamController::class, 'preSeasonOptimiseAnalysis']);
     Route::get('teams/{team}/roster', [TeamController::class, 'roster']);
     Route::apiResource('teams', TeamController::class);
     Route::apiResource('irl-franchises', IrlFranchiseController::class);

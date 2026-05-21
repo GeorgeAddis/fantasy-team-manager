@@ -171,6 +171,31 @@ export function useFlagThursdayUpdate() {
   })
 }
 
+export function useFlagPreSeasonOptimisation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => leaguesApi.flagPreSeasonOptimisation(),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.leagues.all })
+      const listKey = queryKeys.leagues.list({})
+      const prev = qc.getQueryData(listKey)
+      if (prev?.data) {
+        qc.setQueryData(listKey, {
+          ...prev,
+          data: prev.data.map((l) => ({ ...l, requires_pre_season_optimised: true })),
+        })
+      }
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.leagues.list({}), ctx.prev)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+    },
+  })
+}
+
 export function useUpdateRosters() {
   const qc = useQueryClient()
   return useMutation({

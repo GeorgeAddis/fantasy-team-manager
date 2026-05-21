@@ -18,6 +18,7 @@ import PersonSearchIcon from '@mui/icons-material/PersonSearch'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import TuneIcon from '@mui/icons-material/Tune'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
 
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import BlockIcon from '@mui/icons-material/Block'
@@ -34,6 +35,7 @@ import SeasonRankingsExpanded from './SeasonRankingsExpanded'
 import HomePanel from './HomePanel'
 import SearchRosterPanel from './SearchRosterPanel'
 import DoNotRosterPanel from './DoNotRosterPanel'
+import PreSeasonOptimisePanel from './PreSeasonOptimisePanel'
 
 const POSITION_COLORS = {
   QB: '#e57373',
@@ -51,6 +53,7 @@ const POSITION_COLORS = {
 const FILTERS = [
   { value: 'home', label: 'Home', icon: HomeIcon },
   { value: 'all', label: 'All Teams', icon: GroupsIcon },
+  { value: 'pre-season-optimise', label: 'Pre Season Optimise', icon: AutoFixHighIcon },
   { value: 'require-lineup-change', label: 'Require Lineup Change', icon: SyncAltIcon },
   { value: 'require-roster-moves', label: 'Require Roster Moves', icon: PersonAddIcon },
   { value: 'roster-optimisation', label: 'Roster Optimisation', icon: TuneIcon },
@@ -138,7 +141,7 @@ export default function ManageTeamsPage() {
     if (filter === 'thursday-update') {
       return rows.filter((r) => r.league.requires_thursday_update === true)
     }
-    if (filter === 'home' || filter === 'search-player' || filter === 'search-franchise' || filter === 'do-not-roster') return []
+    if (filter === 'home' || filter === 'search-player' || filter === 'search-franchise' || filter === 'do-not-roster' || filter === 'pre-season-optimise') return []
     return rows
   }, [rows, filter])
 
@@ -414,6 +417,10 @@ export default function ManageTeamsPage() {
   function renderContent() {
     if (filter === 'home') {
       return <HomePanel />
+    }
+
+    if (filter === 'pre-season-optimise') {
+      return <PreSeasonOptimisePanel />
     }
 
     if (filter === 'search-player') {

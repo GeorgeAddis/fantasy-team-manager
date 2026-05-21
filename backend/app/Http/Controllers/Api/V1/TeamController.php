@@ -172,6 +172,82 @@ class TeamController extends Controller
     }
 
     /**
+     * For each "my team", return season-rank data for the roster and league free agents.
+     * The frontend applies position filtering and computes which teams have FAs
+     * outranking rostered players.
+     */
+    public function preSeasonOptimiseAnalysis(): JsonResponse
+    {
+        $myTeams = Team::query()
+            ->where('my_team', true)
+            ->with(['league.teams', 'lineupSlots.player.irlFranchise'])
+            ->orderBy('league_id')
+            ->orderBy('name')
+            ->get();
+
+        $data = $myTeams->map(function (Team $team) {
+            $league = $team->league;
+            if (!$league) {
+                return null;
+            }
+
+            $leagueTeamIds = $league->teams->pluck('id')->toArray();
+
+            $rosteredIds = LineupSlot::whereIn('team_id', $leagueTeamIds)
+                ->whereNotNull('player_id')
+                ->pluck('player_id')
+                ->unique()
+                ->toArray();
+
+            $freeAgents = Player::with('irlFranchise')
+                ->whereNotIn('id', $rosteredIds)
+                ->where(function ($q) {
+                    $q->whereNotNull('season_rank')
+                      ->orWhereNotNull('season_position_rank');
+                })
+                ->get()
+                ->map(fn ($p) => [
+                    'id'                    => $p->id,
+                    'name'                  => $p->name,
+                    'positions'             => $p->positions ?? [],
+                    'season_rank'           => $p->season_rank,
+                    'season_position_rank'  => $p->season_position_rank,
+                    'irl_franchise_abbr'    => $p->irlFranchise?->abbreviated_name,
+                    'bye_week'              => $p->irlFranchise?->bye_week,
+                ])
+                ->values();
+
+            $myPlayers = $team->lineupSlots
+                ->filter(fn ($s) => $s->player !== null
+                    && ($s->player->season_rank !== null || $s->player->season_position_rank !== null))
+                ->map(fn ($s) => [
+                    'id'                    => $s->player->id,
+                    'name'                  => $s->player->name,
+                    'positions'             => $s->player->positions ?? [],
+                    'season_rank'           => $s->player->season_rank,
+                    'season_position_rank'  => $s->player->season_position_rank,
+                    'irl_franchise_abbr'    => $s->player->irlFranchise?->abbreviated_name,
+                    'bye_week'              => $s->player->irlFranchise?->bye_week,
+                    'lineup_position'       => $s->lineup_position->value,
+                ])
+                ->unique('id')
+                ->values();
+
+            return [
+                'id'           => $team->id,
+                'name'         => $team->name,
+                'league_id'    => $league->id,
+                'league_name'  => $league->name,
+                'my_team'      => true,
+                'my_players'   => $myPlayers,
+                'free_agents'  => $freeAgents,
+            ];
+        })->filter()->values();
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
      * Same greedy optimal-lineup algorithm as computeSuggestedChanges,
      * but the player pool includes league free agents alongside roster players.
      * Reports which players are incoming (FA or BN) and who they replace.

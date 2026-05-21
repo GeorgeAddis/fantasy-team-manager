@@ -20,6 +20,7 @@ class LeagueUpdateRequest extends FormRequest
             'requires_roster_moves'     => ['sometimes', 'boolean'],
             'requires_roster_optimised' => ['sometimes', 'boolean'],
             'requires_thursday_update' => ['sometimes', 'boolean'],
+            'requires_pre_season_optimised' => ['sometimes', 'boolean'],
         ];
     }
 }

@@ -54,6 +54,11 @@ export function flagThursdayUpdate() {
 }
 
 /** @returns {Promise<object>} */
+export function flagPreSeasonOptimisation() {
+  return apiFetch(`${path}/flag-pre-season-optimisation`, { method: 'POST' })
+}
+
+/** @returns {Promise<object>} */
 export function updateRosters(leagueId, data) {
   return apiFetch(`${path}/${leagueId}/update-rosters`, {
     method: 'POST',
