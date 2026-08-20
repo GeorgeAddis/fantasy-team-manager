@@ -68,6 +68,7 @@ export default function ImportPlayersDialog({ open, onClose, onImport, isLoading
         <DialogContentText sx={{ color: 'text.secondary', mb: 2 }}>
           Upload a CSV file with <strong>Player</strong>, <strong>Team</strong>, and{' '}
           <strong>Position</strong> columns. Team should use the franchise abbreviation.
+          After import, Fantrax IDs are matched automatically via the Fantrax API.
         </DialogContentText>
 
         <input
@@ -139,8 +140,21 @@ export default function ImportPlayersDialog({ open, onClose, onImport, isLoading
             <Alert severity="success" sx={{ mt: 1.5 }}>
               Imported {result.imported} player{result.imported !== 1 ? 's' : ''}
               {result.skipped > 0 && ` (${result.skipped} row${result.skipped !== 1 ? 's' : ''} skipped)`}
-              {result.cleared != null && result.cleared > 0 && ` — ${result.cleared} previous player${result.cleared !== 1 ? 's' : ''} removed`}.
+              {result.cleared != null && result.cleared > 0 && ` — ${result.cleared} previous player${result.cleared !== 1 ? 's' : ''} removed`}
+              {result.fantrax_ids_updated != null && ` — ${result.fantrax_ids_updated} Fantrax ID${result.fantrax_ids_updated !== 1 ? 's' : ''} matched`}
+              .
             </Alert>
+            {result.fantrax_error && (
+              <Alert severity="warning" sx={{ mt: 1.5 }}>
+                Players imported, but Fantrax ID sync failed: {result.fantrax_error}
+              </Alert>
+            )}
+            {result.fantrax_unmatched_count > 0 && !result.fantrax_error && (
+              <Alert severity="info" sx={{ mt: 1.5 }}>
+                {result.fantrax_unmatched_count} player{result.fantrax_unmatched_count !== 1 ? 's' : ''} still have no Fantrax ID
+                (you can retry via Import Fantrax IDs).
+              </Alert>
+            )}
             {Array.isArray(result.failed_rows) && result.failed_rows.length > 0 && (
               <Box
                 sx={{

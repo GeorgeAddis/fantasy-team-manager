@@ -13,6 +13,7 @@ class TeamResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'fantrax_id' => $this->fantrax_id,
             'league_id' => $this->league_id,
             'my_team' => $this->my_team,
             'created_at' => $this->created_at?->toIso8601String(),

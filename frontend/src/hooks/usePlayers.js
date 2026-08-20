@@ -74,7 +74,7 @@ export function useImportFantraxIds() {
 export function useImportRankings() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ data, type, period }) => api.importRankings(data, type, period),
+    mutationFn: ({ data, type, period, ppr = true }) => api.importRankings(data, type, period, ppr),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.players.all })
     },
@@ -84,7 +84,7 @@ export function useImportRankings() {
 export function useImportWaiverRankings() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ data, type }) => api.importWaiverRankings(data, type),
+    mutationFn: ({ data, type, ppr = true }) => api.importWaiverRankings(data, type, ppr),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.players.all })
     },
@@ -178,7 +178,7 @@ export function useResetDoNotRoster() {
 export function useImportSeasonRankings() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ data }) => api.importSeasonRankings(data),
+    mutationFn: (payload) => api.importSeasonRankings(payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.players.all })
       qc.invalidateQueries({ queryKey: queryKeys.leagues.all })

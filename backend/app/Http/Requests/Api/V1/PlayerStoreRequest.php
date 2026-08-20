@@ -13,8 +13,12 @@ class PlayerStoreRequest extends FormRequest
         $this->merge([
             'week_rank' => $this->input('week_rank') === null || $this->input('week_rank') === '' ? 999 : $this->input('week_rank'),
             'week_position_rank' => $this->input('week_position_rank') === null || $this->input('week_position_rank') === '' ? 999 : $this->input('week_position_rank'),
+            'week_rank_non_ppr' => $this->input('week_rank_non_ppr') === null || $this->input('week_rank_non_ppr') === '' ? 999 : $this->input('week_rank_non_ppr'),
+            'week_position_rank_non_ppr' => $this->input('week_position_rank_non_ppr') === null || $this->input('week_position_rank_non_ppr') === '' ? 999 : $this->input('week_position_rank_non_ppr'),
             'season_rank' => $this->input('season_rank') === null || $this->input('season_rank') === '' ? 999 : $this->input('season_rank'),
             'season_position_rank' => $this->input('season_position_rank') === null || $this->input('season_position_rank') === '' ? 999 : $this->input('season_position_rank'),
+            'season_rank_non_ppr' => $this->input('season_rank_non_ppr') === null || $this->input('season_rank_non_ppr') === '' ? 999 : $this->input('season_rank_non_ppr'),
+            'season_position_rank_non_ppr' => $this->input('season_position_rank_non_ppr') === null || $this->input('season_position_rank_non_ppr') === '' ? 999 : $this->input('season_position_rank_non_ppr'),
         ]);
     }
 
@@ -31,8 +35,12 @@ class PlayerStoreRequest extends FormRequest
             'irl_franchise_id' => ['nullable', 'integer', Rule::exists('irl_franchises', 'id')],
             'week_rank' => ['nullable', 'integer', 'min:0'],
             'week_position_rank' => ['nullable', 'integer', 'min:0'],
+            'week_rank_non_ppr' => ['nullable', 'integer', 'min:0'],
+            'week_position_rank_non_ppr' => ['nullable', 'integer', 'min:0'],
             'season_rank' => ['nullable', 'integer', 'min:0'],
             'season_position_rank' => ['nullable', 'integer', 'min:0'],
+            'season_rank_non_ppr' => ['nullable', 'integer', 'min:0'],
+            'season_position_rank_non_ppr' => ['nullable', 'integer', 'min:0'],
             'positions' => ['required', 'array', 'min:1'],
             'positions.*' => ['required', 'string', Rule::enum(PlayerPosition::class)],
         ];

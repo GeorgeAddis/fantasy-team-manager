@@ -4,7 +4,7 @@ namespace App\Http\Requests\Api\V1;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class LeagueStoreRequest extends FormRequest
+class LeagueImportFantraxRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -15,7 +15,7 @@ class LeagueStoreRequest extends FormRequest
     {
         return [
             'name'       => ['required', 'string', 'max:255'],
-            'fantrax_id' => ['nullable', 'string', 'max:255'],
+            'fantrax_id' => ['required', 'string', 'max:255'],
             'ppr'        => ['sometimes', 'boolean'],
         ];
     }

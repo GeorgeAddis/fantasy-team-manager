@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Team extends Model
 {
-    protected $fillable = ['name', 'league_id', 'my_team'];
+    protected $fillable = ['name', 'fantrax_id', 'league_id', 'my_team'];
 
     protected function casts(): array
     {

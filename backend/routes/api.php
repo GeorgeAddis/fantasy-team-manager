@@ -18,6 +18,8 @@ Route::prefix('v1')->group(function () {
     Route::post('leagues/flag-roster-optimisation', [LeagueController::class, 'flagRosterOptimisation']);
     Route::post('leagues/flag-thursday-update', [LeagueController::class, 'flagThursdayUpdate']);
     Route::post('leagues/flag-pre-season-optimisation', [LeagueController::class, 'flagPreSeasonOptimisation']);
+    Route::post('leagues/import-fantrax', [LeagueController::class, 'importFantrax']);
+    Route::post('leagues/update-all-rosters', [LeagueController::class, 'updateAllRosters']);
     Route::get('leagues/{league}/waiver-board', [LeagueController::class, 'waiverBoard']);
     Route::post('leagues/{league}/update-rosters', [LeagueController::class, 'updateRosters']);
     Route::apiResource('leagues', LeagueController::class);

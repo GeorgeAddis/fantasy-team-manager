@@ -16,6 +16,7 @@ class LeagueUpdateRequest extends FormRequest
         return [
             'name'                  => ['sometimes', 'required', 'string', 'max:255'],
             'fantrax_id'            => ['nullable', 'string', 'max:255'],
+            'ppr'                   => ['sometimes', 'boolean'],
             'requires_waiver_claim' => ['sometimes', 'boolean'],
             'requires_roster_moves'     => ['sometimes', 'boolean'],
             'requires_roster_optimised' => ['sometimes', 'boolean'],

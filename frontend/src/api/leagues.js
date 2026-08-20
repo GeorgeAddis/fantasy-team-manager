@@ -19,6 +19,11 @@ export function createLeague(body) {
 }
 
 /** @returns {Promise<object>} */
+export function importFantraxLeague(body) {
+  return apiFetch(`${path}/import-fantrax`, { method: 'POST', body })
+}
+
+/** @returns {Promise<object>} */
 export function updateLeague(id, body) {
   return apiFetch(`${path}/${id}`, { method: 'PATCH', body })
 }
@@ -59,9 +64,15 @@ export function flagPreSeasonOptimisation() {
 }
 
 /** @returns {Promise<object>} */
-export function updateRosters(leagueId, data) {
+export function updateRosters(leagueId) {
   return apiFetch(`${path}/${leagueId}/update-rosters`, {
     method: 'POST',
-    body: { data },
+  })
+}
+
+/** @returns {Promise<object>} */
+export function updateAllRosters() {
+  return apiFetch(`${path}/update-all-rosters`, {
+    method: 'POST',
   })
 }

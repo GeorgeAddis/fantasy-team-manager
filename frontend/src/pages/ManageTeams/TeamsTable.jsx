@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import {
-  Alert,
   Box,
   Button,
   Chip,
@@ -27,7 +26,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import GavelIcon from '@mui/icons-material/Gavel'
 import TuneIcon from '@mui/icons-material/Tune'
 import RosterDialog from '@/components/RosterDialog'
-import PasteDataDialog from '@/components/PasteDataDialog'
+import RosterUpdateResultDialog from '@/components/RosterUpdateResultDialog'
 import { useUpdateRosters } from '@/hooks/useLeagues'
 
 function formatUpdatedAt(iso) {
@@ -159,7 +158,6 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
   const [rosterTarget, setRosterTarget] = useState(null)
   const [changesTarget, setChangesTarget] = useState(null)
   const [updateTarget, setUpdateTarget] = useState(null)
-  const [rosterText, setRosterText] = useState('')
   const rosterMutation = useUpdateRosters()
 
   const isLineupChange = variant === 'require-lineup-change'
@@ -168,25 +166,17 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
   const isWaiverClaims = variant === 'require-waiver-claims'
   const isThursdayUpdate = variant === 'thursday-update'
 
-  function openUpdateDialog(league) {
+  function handleUpdate(league) {
     setUpdateTarget(league)
-    setRosterText('')
     rosterMutation.reset()
+    rosterMutation.mutate({ leagueId: league.id })
   }
 
-  function closeUpdateDialog() {
+  function closeUpdateResult() {
     if (rosterMutation.isPending) return
     setUpdateTarget(null)
-    setRosterText('')
     rosterMutation.reset()
   }
-
-  function handleUpdateSubmit() {
-    if (!updateTarget || !rosterText.trim()) return
-    rosterMutation.mutate({ leagueId: updateTarget.id, data: rosterText })
-  }
-
-  const result = rosterMutation.data
 
   if (isLoading) {
     return (
@@ -362,8 +352,13 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
                     <Button
                       size="small"
                       variant="contained"
-                      startIcon={<SyncIcon />}
-                      onClick={() => openUpdateDialog(league)}
+                      startIcon={
+                        rosterMutation.isPending && updateTarget?.id === league.id
+                          ? <CircularProgress size={16} color="inherit" />
+                          : <SyncIcon />
+                      }
+                      onClick={() => handleUpdate(league)}
+                      disabled={rosterMutation.isPending}
                       sx={{
                         textTransform: 'none',
                         bgcolor: 'primary.main',
@@ -395,68 +390,14 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
         leagueName={changesTarget?.leagueName}
       />
 
-      <PasteDataDialog
+      <RosterUpdateResultDialog
         open={Boolean(updateTarget)}
-        onClose={closeUpdateDialog}
+        onClose={closeUpdateResult}
         title={`Update Rosters — ${updateTarget?.name ?? ''}`}
-        text={rosterText}
-        onTextChange={setRosterText}
-        placeholder={'TeamName\nQB\nPlayer One\nPlayer Two\nRB\nPlayer Three\n...'}
-        onSubmit={handleUpdateSubmit}
         isPending={rosterMutation.isPending}
-        submitDisabled={!rosterText.trim()}
-        showSubmit={!result}
-        closeLabel={result ? 'Close' : 'Cancel'}
-      >
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Paste the full roster data below. This will replace all existing
-          lineup slots for every team in this league.
-        </Typography>
-
-        {rosterMutation.isError && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {rosterMutation.error?.body?.message || rosterMutation.error?.message || 'Something went wrong.'}
-          </Alert>
-        )}
-
-        {result && (
-          <Box sx={{ mb: 2 }}>
-            <Alert severity="success" sx={{ mb: 1.5 }}>
-              Updated {result.teams_matched} team{result.teams_matched !== 1 ? 's' : ''} — {result.slots_created} lineup slot{result.slots_created !== 1 ? 's' : ''} created.
-            </Alert>
-
-            {result.teams_not_found?.length > 0 && (
-              <Alert severity="warning" sx={{ mb: 1 }}>
-                Teams not matched to league: {result.teams_not_found.join(', ')}
-              </Alert>
-            )}
-
-            {result.players_not_found?.length > 0 && (
-              <Box
-                sx={{
-                  maxHeight: 160,
-                  overflowY: 'auto',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1.5,
-                  p: 1,
-                  fontSize: '0.8rem',
-                  bgcolor: 'background.default',
-                }}
-              >
-                <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: 'text.secondary', fontWeight: 600 }}>
-                  Players not found in database ({result.players_not_found.length})
-                </Typography>
-                {result.players_not_found.map((p, i) => (
-                  <Typography key={i} variant="caption" sx={{ display: 'block', fontFamily: 'monospace' }}>
-                    {p.team} / {p.section}: {p.name}
-                  </Typography>
-                ))}
-              </Box>
-            )}
-          </Box>
-        )}
-      </PasteDataDialog>
+        result={rosterMutation.data}
+        error={rosterMutation.error}
+      />
     </>
   )
 }

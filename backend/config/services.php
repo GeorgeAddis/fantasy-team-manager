@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'fantrax' => [
+        'user_secret_id' => env('FANTRAX_USER_SECRET_ID'),
+    ],
+
 ];

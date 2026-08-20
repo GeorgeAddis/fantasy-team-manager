@@ -19,15 +19,17 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import TuneIcon from '@mui/icons-material/Tune'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
+import SyncIcon from '@mui/icons-material/Sync'
 
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import BlockIcon from '@mui/icons-material/Block'
 import ErrorIcon from '@mui/icons-material/Error'
-import { useLeagueList, useFlagWaiverClaims, useFlagRosterMoves, useFlagRosterOptimisation, useFlagThursdayUpdate, useUpdateLeague } from '@/hooks/useLeagues'
+import { useLeagueList, useFlagWaiverClaims, useFlagRosterMoves, useFlagRosterOptimisation, useFlagThursdayUpdate, useUpdateLeague, useUpdateAllRosters } from '@/hooks/useLeagues'
 import { useTeamLineupAnalysis, useTeamRosterAddAnalysis, useTeamRoster } from '@/hooks/useTeams'
 import { useSettings } from '@/hooks/useSettings'
 import TeamsTable from './TeamsTable'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import RosterUpdateResultDialog from '@/components/RosterUpdateResultDialog'
 import SeasonRankingsColumn from './SeasonRankingsColumn'
 import WeekRankingsColumn from './WeekRankingsColumn'
 import TopWaiverColumn from './TopWaiverColumn'
@@ -83,6 +85,8 @@ export default function ManageTeamsPage() {
   const flagRosterOptMutation = useFlagRosterOptimisation()
   const flagThursdayMutation = useFlagThursdayUpdate()
   const updateLeagueMutation = useUpdateLeague()
+  const updateAllRostersMutation = useUpdateAllRosters()
+  const [updateAllOpen, setUpdateAllOpen] = useState(false)
   const activeRosterId = addsTarget?.myTeam?.id ?? optimiseTarget?.myTeam?.id ?? (thursdayTarget?.step >= 1 ? thursdayTarget?.myTeam?.id : null)
   const { data: rosterPanelData, isLoading: rosterPanelLoading } = useTeamRoster(
     activeRosterId,
@@ -255,6 +259,7 @@ export default function ManageTeamsPage() {
   const isRosterMovesView = filter === 'require-roster-moves'
   const isRosterOptView = filter === 'roster-optimisation'
   const isThursdayView = filter === 'thursday-update'
+  const isAllView = filter === 'all'
   const showMakeClaims = isWaiverView && claimsTarget !== null
   const showMakeAdds = isRosterMovesView && addsTarget !== null
   const showOptimise = isRosterOptView && optimiseTarget !== null
@@ -904,6 +909,26 @@ export default function ManageTeamsPage() {
             {FILTERS.find((f) => f.value === filter)?.label}
           </Typography>
 
+          {isAllView && (
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={
+                updateAllRostersMutation.isPending
+                  ? <CircularProgress size={16} color="inherit" />
+                  : <SyncIcon />
+              }
+              disabled={updateAllRostersMutation.isPending}
+              onClick={() => {
+                setUpdateAllOpen(true)
+                updateAllRostersMutation.reset()
+                updateAllRostersMutation.mutate()
+              }}
+              sx={{ textTransform: 'none' }}
+            >
+              Update All
+            </Button>
+          )}
           {isWaiverView && (
             <Button
               variant="contained"
@@ -1063,6 +1088,20 @@ export default function ManageTeamsPage() {
         onCancel={() => setConfirmThursdayOpen(false)}
         onConfirm={handleFlagThursdayConfirm}
         isLoading={flagThursdayMutation.isPending}
+      />
+
+      <RosterUpdateResultDialog
+        open={updateAllOpen}
+        onClose={() => {
+          if (updateAllRostersMutation.isPending) return
+          setUpdateAllOpen(false)
+          updateAllRostersMutation.reset()
+        }}
+        title="Update All Rosters"
+        isPending={updateAllRostersMutation.isPending}
+        result={updateAllRostersMutation.data}
+        error={updateAllRostersMutation.error}
+        bulk
       />
 
     </Box>

@@ -39,17 +39,23 @@ export function importFantraxIds() {
   return apiFetch(`${path}/import-fantrax-ids`, { method: 'POST' })
 }
 
-export function importRankings(data, type, period) {
+export function importRankings(data, type, period, ppr = true) {
   return apiFetch(`${path}/import-rankings`, {
     method: 'POST',
-    body: { data, type, period },
+    body: { data, type, period, ppr },
   })
 }
 
-export function importSeasonRankings(data) {
+export function importSeasonRankings({ file, data, ppr = true } = {}) {
+  if (file) {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('ppr', ppr ? '1' : '0')
+    return apiFetch(`${path}/import-season-rankings`, { method: 'POST', body: form })
+  }
   return apiFetch(`${path}/import-season-rankings`, {
     method: 'POST',
-    body: { data },
+    body: { data, ppr },
   })
 }
 
@@ -58,10 +64,10 @@ export function searchMyTeams(params = {}) {
   return apiFetch(`${path}/search-my-teams?${q}`)
 }
 
-export function importWaiverRankings(data, type) {
+export function importWaiverRankings(data, type, ppr = true) {
   return apiFetch(`${path}/import-waiver-rankings`, {
     method: 'POST',
-    body: { data, type },
+    body: { data, type, ppr },
   })
 }
 

@@ -16,6 +16,7 @@ class TeamStoreRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
+            'fantrax_id' => ['nullable', 'string', 'max:255'],
             'league_id' => ['required', 'integer', Rule::exists('leagues', 'id')],
             'my_team' => ['required', 'boolean'],
         ];

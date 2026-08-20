@@ -27,6 +27,17 @@ export function useCreateLeague() {
   })
 }
 
+export function useImportFantraxLeague() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body) => leaguesApi.importFantraxLeague(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+      qc.invalidateQueries({ queryKey: queryKeys.teams.all })
+    },
+  })
+}
+
 export function useUpdateLeague() {
   const qc = useQueryClient()
   return useMutation({
@@ -199,9 +210,21 @@ export function useFlagPreSeasonOptimisation() {
 export function useUpdateRosters() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ leagueId, data }) => leaguesApi.updateRosters(leagueId, data),
+    mutationFn: ({ leagueId }) => leaguesApi.updateRosters(leagueId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+      qc.invalidateQueries({ queryKey: queryKeys.teams.all })
+    },
+  })
+}
+
+export function useUpdateAllRosters() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => leaguesApi.updateAllRosters(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+      qc.invalidateQueries({ queryKey: queryKeys.teams.all })
     },
   })
 }

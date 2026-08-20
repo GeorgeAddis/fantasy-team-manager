@@ -18,12 +18,18 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { usePlayerList, useImportRankings, useImportSeasonRankings, useImportWaiverRankings } from '@/hooks/usePlayers'
 import PasteDataDialog from '@/components/PasteDataDialog'
+import ImportSeasonRankingsDialog from '@/components/ImportSeasonRankingsDialog'
 import PositionToggle from '@/components/PositionToggle'
 
 const MODES = [
   { key: 'week', label: 'Week', icon: CalendarViewWeekIcon },
   { key: 'season', label: 'Season', icon: EventIcon },
   { key: 'waiver', label: 'Waiver Wire', icon: SwapHorizIcon },
+]
+
+const SCORING_SECTIONS = [
+  { key: 'ppr', label: 'PPR Rankings' },
+  { key: 'non_ppr', label: 'Rankings' },
 ]
 
 const UPLOAD_TYPES = ['QB', 'RWT', 'DST', 'K']
@@ -33,28 +39,53 @@ function isRanked(value) {
   return Number.isFinite(value) && value > 0 && value < 999
 }
 
+function rankingFields(scoring) {
+  if (scoring === 'ppr') {
+    return {
+      week_rank: 'week_rank',
+      week_position_rank: 'week_position_rank',
+      season_rank: 'season_rank',
+      season_position_rank: 'season_position_rank',
+      waiver_rank: 'waiver_rank',
+      waiver_rank_overall: 'waiver_rank_overall',
+    }
+  }
+  return {
+    week_rank: 'week_rank_non_ppr',
+    week_position_rank: 'week_position_rank_non_ppr',
+    season_rank: 'season_rank_non_ppr',
+    season_position_rank: 'season_position_rank_non_ppr',
+    waiver_rank: 'waiver_rank_non_ppr',
+    waiver_rank_overall: 'waiver_rank_overall_non_ppr',
+  }
+}
+
 export default function RankingsPage() {
+  const [scoring, setScoring] = useState('ppr')
   const [mode, setMode] = useState('week')
   const [position, setPosition] = useState('QB')
   const playerQuery = usePlayerList({ per_page: 5000, include_free_agents: 1 })
   const players = playerQuery.data?.data ?? []
+  const isPpr = scoring === 'ppr'
+  const scoringLabel = isPpr ? 'PPR' : 'Non-PPR'
 
-  // Week import state
   const [importOpen, setImportOpen] = useState(false)
   const [importType, setImportType] = useState('QB')
   const [importText, setImportText] = useState('')
   const importMutation = useImportRankings()
 
-  // Season import state
   const [seasonImportOpen, setSeasonImportOpen] = useState(false)
-  const [seasonImportText, setSeasonImportText] = useState('')
   const seasonImportMutation = useImportSeasonRankings()
 
-  // Waiver import state
   const [waiverImportOpen, setWaiverImportOpen] = useState(false)
   const [waiverImportType, setWaiverImportType] = useState('QB')
   const [waiverImportText, setWaiverImportText] = useState('')
   const waiverImportMutation = useImportWaiverRankings()
+
+  function selectMode(nextScoring, nextMode) {
+    setScoring(nextScoring)
+    setMode(nextMode)
+  }
 
   function openImport() {
     setImportType('QB')
@@ -72,11 +103,10 @@ export default function RankingsPage() {
 
   function handleImportSubmit() {
     if (!importText.trim()) return
-    importMutation.mutate({ data: importText, type: importType, period: mode })
+    importMutation.mutate({ data: importText, type: importType, period: mode, ppr: isPpr })
   }
 
   function openSeasonImport() {
-    setSeasonImportText('')
     seasonImportMutation.reset()
     setSeasonImportOpen(true)
   }
@@ -84,13 +114,11 @@ export default function RankingsPage() {
   function closeSeasonImport() {
     if (seasonImportMutation.isPending) return
     setSeasonImportOpen(false)
-    setSeasonImportText('')
     seasonImportMutation.reset()
   }
 
-  function handleSeasonImportSubmit() {
-    if (!seasonImportText.trim()) return
-    seasonImportMutation.mutate({ data: seasonImportText })
+  function handleSeasonImportSubmit(payload) {
+    seasonImportMutation.mutate({ ...payload, ppr: isPpr })
   }
 
   function openWaiverImport() {
@@ -109,7 +137,7 @@ export default function RankingsPage() {
 
   function handleWaiverImportSubmit() {
     if (!waiverImportText.trim()) return
-    waiverImportMutation.mutate({ data: waiverImportText, type: waiverImportType })
+    waiverImportMutation.mutate({ data: waiverImportText, type: waiverImportType, ppr: isPpr })
   }
 
   const importResult = importMutation.data
@@ -118,38 +146,39 @@ export default function RankingsPage() {
 
   const rows = useMemo(() => {
     if (!players.length) return []
+    const fields = rankingFields(scoring)
 
     if (mode === 'waiver') {
       if (position === 'OVR') {
         return players
-          .filter((p) => isRanked(Number(p.waiver_rank_overall)))
+          .filter((p) => isRanked(Number(p[fields.waiver_rank_overall])))
           .map((p) => {
             const pos = (p.positions ?? [])[0] ?? ''
             return {
               id: p.id,
               name: p.name,
               team: p.irl_franchise_abbr || p.irl_franchise_name || 'FA',
-              rank: Number(p.waiver_rank_overall),
-              positionRankLabel: isRanked(Number(p.waiver_rank)) ? `${pos}${p.waiver_rank}` : pos,
+              rank: Number(p[fields.waiver_rank_overall]),
+              positionRankLabel: isRanked(Number(p[fields.waiver_rank])) ? `${pos}${p[fields.waiver_rank]}` : pos,
             }
           })
           .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name))
       }
       return players
         .filter((p) => (p.positions ?? []).includes(position))
-        .filter((p) => isRanked(Number(p.waiver_rank)))
+        .filter((p) => isRanked(Number(p[fields.waiver_rank])))
         .map((p) => ({
           id: p.id,
           name: p.name,
           team: p.irl_franchise_abbr || p.irl_franchise_name || 'FA',
-          rank: Number(p.waiver_rank),
+          rank: Number(p[fields.waiver_rank]),
         }))
         .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name))
     }
 
     if (position === 'RWT') {
-      const rankField = mode === 'week' ? 'week_rank' : 'season_rank'
-      const posRankField = mode === 'week' ? 'week_position_rank' : 'season_position_rank'
+      const rankField = mode === 'week' ? fields.week_rank : fields.season_rank
+      const posRankField = mode === 'week' ? fields.week_position_rank : fields.season_position_rank
       return players
         .filter((p) => (p.positions ?? []).some((pos) => ['RB', 'WR', 'TE'].includes(pos)))
         .filter((p) => isRanked(Number(p[rankField])))
@@ -168,7 +197,7 @@ export default function RankingsPage() {
         .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name))
     }
 
-    const posRankField = mode === 'week' ? 'week_position_rank' : 'season_position_rank'
+    const posRankField = mode === 'week' ? fields.week_position_rank : fields.season_position_rank
     return players
       .filter((p) => (p.positions ?? []).includes(position))
       .filter((p) => isRanked(Number(p[posRankField])))
@@ -179,9 +208,13 @@ export default function RankingsPage() {
         rank: Number(p[posRankField]),
       }))
       .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name))
-  }, [players, mode, position])
+  }, [players, mode, position, scoring])
 
-  const modeTitle = mode === 'week' ? 'Week Rankings' : mode === 'season' ? 'Season Rankings' : 'Waiver Wire Rankings'
+  const modeTitle = mode === 'week'
+    ? `${scoringLabel} Week Rankings`
+    : mode === 'season'
+      ? `${scoringLabel} Season Rankings`
+      : `${scoringLabel} Waiver Wire Rankings`
   const showPosColumn = (position === 'RWT' && mode !== 'waiver') || (mode === 'waiver' && position === 'OVR')
 
   function handleImportClick() {
@@ -192,7 +225,6 @@ export default function RankingsPage() {
 
   return (
     <Box sx={{ display: 'flex', height: '100%', minHeight: '100%', overflow: 'hidden' }}>
-      {/* ──── Sidebar ──── */}
       <Box
         sx={{
           width: 260,
@@ -207,38 +239,41 @@ export default function RankingsPage() {
           gap: 2,
         }}
       >
-        <Typography variant="h6" color="secondary.main">
-          Rankings
-        </Typography>
+        {SCORING_SECTIONS.map((section) => (
+          <Box key={section.key} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Typography variant="h6" color="secondary.main">
+              {section.label}
+            </Typography>
 
-        {MODES.map(({ key, label, icon: Icon }) => {
-          const selected = mode === key
-          return (
-            <Card
-              key={key}
-              variant="outlined"
-              sx={{
-                borderColor: selected ? 'secondary.main' : 'divider',
-                bgcolor: selected ? 'rgba(212,165,116,0.08)' : 'transparent',
-                transition: 'border-color 0.2s, background-color 0.2s',
-              }}
-            >
-              <CardActionArea
-                onClick={() => setMode(key)}
-                sx={{ py: 1.5, px: 2, display: 'flex', justifyContent: 'flex-start', gap: 1.5 }}
-              >
-                <Icon sx={{ fontSize: 22, color: selected ? 'secondary.main' : 'text.secondary' }} />
-                <Typography variant="body1" fontWeight={600} color={selected ? 'secondary.main' : 'text.primary'}>
-                  {label}
-                </Typography>
-              </CardActionArea>
-            </Card>
-          )
-        })}
+            {MODES.map(({ key, label, icon: Icon }) => {
+              const selected = scoring === section.key && mode === key
+              return (
+                <Card
+                  key={`${section.key}-${key}`}
+                  variant="outlined"
+                  sx={{
+                    borderColor: selected ? 'secondary.main' : 'divider',
+                    bgcolor: selected ? 'rgba(212,165,116,0.08)' : 'transparent',
+                    transition: 'border-color 0.2s, background-color 0.2s',
+                  }}
+                >
+                  <CardActionArea
+                    onClick={() => selectMode(section.key, key)}
+                    sx={{ py: 1.5, px: 2, display: 'flex', justifyContent: 'flex-start', gap: 1.5 }}
+                  >
+                    <Icon sx={{ fontSize: 22, color: selected ? 'secondary.main' : 'text.secondary' }} />
+                    <Typography variant="body1" fontWeight={600} color={selected ? 'secondary.main' : 'text.primary'}>
+                      {label}
+                    </Typography>
+                  </CardActionArea>
+                </Card>
+              )
+            })}
+          </Box>
+        ))}
         <Box sx={{ flex: 1 }} />
       </Box>
 
-      {/* ──── Main content ──── */}
       <Box sx={{ flex: 1, minWidth: 0, p: 3, overflow: 'auto' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <Typography variant="h5" color="secondary.main" sx={{ flex: 1 }}>
@@ -327,11 +362,10 @@ export default function RankingsPage() {
         )}
       </Box>
 
-      {/* ──── Import Week Rankings Dialog ──── */}
       <PasteDataDialog
         open={importOpen}
         onClose={closeImport}
-        title="Import Week Rankings"
+        title={`Import ${scoringLabel} Week Rankings`}
         text={importText}
         onTextChange={setImportText}
         placeholder={'#\tPlayer (team)\tMatchup\t...\n1\tJosh Allen (BUF)\tvs. CIN\t...'}
@@ -410,71 +444,20 @@ export default function RankingsPage() {
         )}
       </PasteDataDialog>
 
-      {/* ──── Import Season Rankings Dialog ──── */}
-      <PasteDataDialog
+      <ImportSeasonRankingsDialog
         open={seasonImportOpen}
         onClose={closeSeasonImport}
-        title="Import Season Rankings"
-        text={seasonImportText}
-        onTextChange={setSeasonImportText}
-        placeholder={"Player\tTeam\tPosition\tAge\tStatus\t1QB Rank\tSF/TE Prem\t1QB Pos Rk\n Ja'Marr Chase\tCIN\tWR\t26.1\tVeteran\t1\t3\tWR01"}
-        onSubmit={handleSeasonImportSubmit}
-        isPending={seasonImportMutation.isPending}
-        submitDisabled={!seasonImportText.trim()}
-        submitLabel="Import"
-        submitIcon={<UploadFileIcon />}
-        showSubmit={!seasonImportResult}
-        closeLabel={seasonImportResult ? 'Close' : 'Cancel'}
-      >
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Paste the full season rankings data below (all positions). Tab-separated
-          with columns: Player, Team, Position, Age, Status, 1QB Rank, SF/TE Prem, 1QB Pos Rk.
-        </Typography>
+        onImport={handleSeasonImportSubmit}
+        isLoading={seasonImportMutation.isPending}
+        result={seasonImportResult}
+        error={seasonImportMutation.error}
+        title={`Import ${scoringLabel} Season Rankings`}
+      />
 
-        {seasonImportMutation.isError && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {seasonImportMutation.error?.body?.message || seasonImportMutation.error?.message || 'Something went wrong.'}
-          </Alert>
-        )}
-
-        {seasonImportResult && (
-          <Box sx={{ mb: 2 }}>
-            <Alert severity="success" sx={{ mb: 1.5 }}>
-              Updated {seasonImportResult.updated} player{seasonImportResult.updated !== 1 ? 's' : ''} out of {seasonImportResult.total_lines} rows.
-            </Alert>
-
-            {seasonImportResult.not_found?.length > 0 && (
-              <Box
-                sx={{
-                  maxHeight: 160,
-                  overflowY: 'auto',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1.5,
-                  p: 1,
-                  fontSize: '0.8rem',
-                  bgcolor: 'background.default',
-                }}
-              >
-                <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: 'text.secondary', fontWeight: 600 }}>
-                  Players not found ({seasonImportResult.not_found.length})
-                </Typography>
-                {seasonImportResult.not_found.map((p, i) => (
-                  <Typography key={i} variant="caption" sx={{ display: 'block', fontFamily: 'monospace' }}>
-                    #{p.rank}: {p.name} ({p.position})
-                  </Typography>
-                ))}
-              </Box>
-            )}
-          </Box>
-        )}
-      </PasteDataDialog>
-
-      {/* ──── Import Waiver Wire Rankings Dialog ──── */}
       <PasteDataDialog
         open={waiverImportOpen}
         onClose={closeWaiverImport}
-        title="Import Waiver Wire Rankings"
+        title={`Import ${scoringLabel} Waiver Wire Rankings`}
         text={waiverImportText}
         onTextChange={setWaiverImportText}
         placeholder={'Patrick Mahomes\nJosh Allen\nLamar Jackson\n...'}

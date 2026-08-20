@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import {
-  Alert,
   Box,
   Button,
   CircularProgress,
@@ -16,8 +15,8 @@ import {
 import SyncIcon from '@mui/icons-material/Sync'
 import ListAltIcon from '@mui/icons-material/ListAlt'
 import { useLeagueList, useUpdateRosters } from '@/hooks/useLeagues'
-import PasteDataDialog from '@/components/PasteDataDialog'
 import RosterDialog from '@/components/RosterDialog'
+import RosterUpdateResultDialog from '@/components/RosterUpdateResultDialog'
 
 function formatUpdatedAt(iso) {
   if (!iso) return null
@@ -35,7 +34,6 @@ export default function UpdateTeamsPage() {
   const leagueQuery = useLeagueList()
   const leagues = leagueQuery.data?.data ?? []
   const [updateTarget, setUpdateTarget] = useState(null)
-  const [rosterText, setRosterText] = useState('')
   const rosterMutation = useUpdateRosters()
   const [rosterTarget, setRosterTarget] = useState(null)
 
@@ -48,25 +46,17 @@ export default function UpdateTeamsPage() {
     })
   }, [leagues])
 
-  function openDialog(league) {
+  function handleUpdate(league) {
     setUpdateTarget(league)
-    setRosterText('')
     rosterMutation.reset()
+    rosterMutation.mutate({ leagueId: league.id })
   }
 
-  function closeDialog() {
+  function closeResult() {
     if (rosterMutation.isPending) return
     setUpdateTarget(null)
-    setRosterText('')
     rosterMutation.reset()
   }
-
-  function handleSubmit() {
-    if (!updateTarget || !rosterText.trim()) return
-    rosterMutation.mutate({ leagueId: updateTarget.id, data: rosterText })
-  }
-
-  const result = rosterMutation.data
 
   return (
     <Box
@@ -81,7 +71,7 @@ export default function UpdateTeamsPage() {
         Update Teams
       </Typography>
       <Typography color="text.secondary" sx={{ mb: 3, textAlign: 'center' }}>
-        Trigger roster updates for each of your leagues.
+        Sync rosters from Fantrax for each of your leagues.
       </Typography>
 
       {leagueQuery.isLoading && <CircularProgress sx={{ mt: 4 }} />}
@@ -121,134 +111,85 @@ export default function UpdateTeamsPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {sorted.map((league) => (
-                <TableRow
-                  key={league.id}
-                  sx={{ '&:last-child td': { borderBottom: 0 } }}
-                >
-                  <TableCell>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {league.name}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    {league.teams_updated_at ? (
-                      <Typography variant="body2">
-                        {formatUpdatedAt(league.teams_updated_at)}
+              {sorted.map((league) => {
+                const updatingThis =
+                  rosterMutation.isPending && updateTarget?.id === league.id
+                return (
+                  <TableRow
+                    key={league.id}
+                    sx={{ '&:last-child td': { borderBottom: 0 } }}
+                  >
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {league.name}
                       </Typography>
-                    ) : (
-                      <Typography
-                        variant="body2"
-                        sx={{ fontStyle: 'italic', color: 'text.secondary' }}
-                      >
-                        Never
-                      </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {(() => {
-                      const myTeam = league.teams?.find((t) => t.my_team)
-                      return myTeam ? (
-                        <Button
-                          size="small"
-                          variant="contained"
-                          startIcon={<ListAltIcon />}
-                          onClick={() => setRosterTarget({ teamId: myTeam.id, teamName: myTeam.name, leagueName: league.name })}
-                          sx={{
-                            textTransform: 'none',
-                            bgcolor: 'primary.main',
-                            '&:hover': { bgcolor: 'primary.dark' },
-                          }}
+                    </TableCell>
+                    <TableCell>
+                      {league.teams_updated_at ? (
+                        <Typography variant="body2">
+                          {formatUpdatedAt(league.teams_updated_at)}
+                        </Typography>
+                      ) : (
+                        <Typography
+                          variant="body2"
+                          sx={{ fontStyle: 'italic', color: 'text.secondary' }}
                         >
-                          View Roster
-                        </Button>
-                      ) : null
-                    })()}
-                  </TableCell>
-                  <TableCell align="left">
-                    <Button
-                      size="small"
-                      variant="contained"
-                      startIcon={<SyncIcon />}
-                      onClick={() => openDialog(league)}
-                      sx={{
-                        textTransform: 'none',
-                        bgcolor: 'primary.main',
-                        '&:hover': { bgcolor: 'primary.dark' },
-                      }}
-                    >
-                      Update
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                          Never
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const myTeam = league.teams?.find((t) => t.my_team)
+                        return myTeam ? (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            startIcon={<ListAltIcon />}
+                            onClick={() => setRosterTarget({ teamId: myTeam.id, teamName: myTeam.name, leagueName: league.name })}
+                            sx={{
+                              textTransform: 'none',
+                              bgcolor: 'primary.main',
+                              '&:hover': { bgcolor: 'primary.dark' },
+                            }}
+                          >
+                            View Roster
+                          </Button>
+                        ) : null
+                      })()}
+                    </TableCell>
+                    <TableCell align="left">
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={updatingThis ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />}
+                        onClick={() => handleUpdate(league)}
+                        disabled={rosterMutation.isPending}
+                        sx={{
+                          textTransform: 'none',
+                          bgcolor: 'primary.main',
+                          '&:hover': { bgcolor: 'primary.dark' },
+                        }}
+                      >
+                        Update
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </TableContainer>
       )}
 
-      <PasteDataDialog
+      <RosterUpdateResultDialog
         open={Boolean(updateTarget)}
-        onClose={closeDialog}
+        onClose={closeResult}
         title={`Update Rosters — ${updateTarget?.name ?? ''}`}
-        text={rosterText}
-        onTextChange={setRosterText}
-        placeholder={'TeamName\nQB\nPlayer One\nPlayer Two\nRB\nPlayer Three\n...'}
-        onSubmit={handleSubmit}
         isPending={rosterMutation.isPending}
-        submitDisabled={!rosterText.trim()}
-        showSubmit={!result}
-        closeLabel={result ? 'Close' : 'Cancel'}
-      >
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Paste the full roster data below. This will replace all existing
-          lineup slots for every team in this league.
-        </Typography>
-
-        {rosterMutation.isError && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {rosterMutation.error?.body?.message || rosterMutation.error?.message || 'Something went wrong.'}
-          </Alert>
-        )}
-
-        {result && (
-          <Box sx={{ mb: 2 }}>
-            <Alert severity="success" sx={{ mb: 1.5 }}>
-              Updated {result.teams_matched} team{result.teams_matched !== 1 ? 's' : ''} — {result.slots_created} lineup slot{result.slots_created !== 1 ? 's' : ''} created.
-            </Alert>
-
-            {result.teams_not_found?.length > 0 && (
-              <Alert severity="warning" sx={{ mb: 1 }}>
-                Teams not matched to league: {result.teams_not_found.join(', ')}
-              </Alert>
-            )}
-
-            {result.players_not_found?.length > 0 && (
-              <Box
-                sx={{
-                  maxHeight: 160,
-                  overflowY: 'auto',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1.5,
-                  p: 1,
-                  fontSize: '0.8rem',
-                  bgcolor: 'background.default',
-                }}
-              >
-                <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: 'text.secondary', fontWeight: 600 }}>
-                  Players not found in database ({result.players_not_found.length})
-                </Typography>
-                {result.players_not_found.map((p, i) => (
-                  <Typography key={i} variant="caption" sx={{ display: 'block', fontFamily: 'monospace' }}>
-                    {p.team} / {p.section}: {p.name}
-                  </Typography>
-                ))}
-              </Box>
-            )}
-          </Box>
-        )}
-      </PasteDataDialog>
+        result={rosterMutation.data}
+        error={rosterMutation.error}
+      />
 
       <RosterDialog
         open={Boolean(rosterTarget)}

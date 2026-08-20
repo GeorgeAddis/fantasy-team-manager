@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import {
-  Alert,
   Box,
   Button,
   Chip,
@@ -15,15 +14,14 @@ import {
   Typography,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import ErrorIcon from '@mui/icons-material/Error'
 import FlagIcon from '@mui/icons-material/Flag'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import SyncIcon from '@mui/icons-material/Sync'
 import ConfirmDialog from '@/components/ConfirmDialog'
-import PasteDataDialog from '@/components/PasteDataDialog'
-import PositionToggleMulti from '@/components/PositionToggleMulti'
+import RosterUpdateResultDialog from '@/components/RosterUpdateResultDialog'
+import PositionToggle from '@/components/PositionToggle'
 import {
   useFlagPreSeasonOptimisation,
   useLeagueList,
@@ -75,12 +73,6 @@ function formatPosRank(positions, rank) {
   return `${posPrefix(positions?.[0] ?? '')}${rank}`
 }
 
-function formatPosRankOrPos(positions, rank) {
-  const prefix = posPrefix(positions?.[0] ?? '')
-  if (rank == null || rank >= 999) return prefix
-  return `${prefix}${rank}`
-}
-
 function formatRank(rank) {
   if (rank == null || rank >= 999) return '—'
   return rank
@@ -103,6 +95,76 @@ function expandPositionFilter(selected) {
 
 function hasPosition(player, positionsSet) {
   return (player.positions ?? []).some((p) => positionsSet.has(p))
+}
+
+const LINEUP_LABEL = {
+  QB: 'QB', RB1: 'RB', RB2: 'RB', WR1: 'WR', WR2: 'WR', WR3: 'WR',
+  TE: 'TE', RWT: 'FLEX', K: 'K', DST: 'DST', BN: 'BN',
+}
+
+const HEADER_SX = {
+  fontWeight: 700,
+  color: 'text.secondary',
+  fontSize: '0.7rem',
+}
+
+const CELL_SX = {
+  fontSize: '0.8rem',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+function displayBoardName(player) {
+  if (!player._mine) return player.name
+  const label = LINEUP_LABEL[player.lineup_position] ?? player.lineup_position
+  return label ? `${player.name} (${label})` : player.name
+}
+
+/**
+ * Merge my players + free agents for the selected positions, sorted by season rank.
+ * Keeps all of my players at those positions (unranked mine sink to the bottom),
+ * and available players through 10 spots past my worst ranked player
+ * (same windowing as SeasonRankingsExpanded).
+ */
+function buildPositionBoard(myPlayers, freeAgents, selectedPositions) {
+  const filterSet = expandPositionFilter(selectedPositions)
+  if (filterSet.size === 0) return []
+
+  const isRanked = (p) => p.season_rank != null && p.season_rank > 0 && p.season_rank < 999
+
+  const mineEligible = (myPlayers ?? [])
+    .filter((p) => hasPosition(p, filterSet))
+    .map((p) => ({ ...p, _mine: true }))
+
+  const mineRanked = mineEligible.filter(isRanked)
+  const mineUnranked = mineEligible.filter((p) => !isRanked(p))
+
+  const available = (freeAgents ?? [])
+    .filter((p) => hasPosition(p, filterSet))
+    .filter(isRanked)
+    .slice()
+    .sort((a, b) => a.season_rank - b.season_rank)
+
+  let cutoffRank = null
+  if (mineRanked.length > 0) {
+    const worstMyRank = Math.max(...mineRanked.map((p) => p.season_rank))
+    const availableBeyond = available.filter((p) => p.season_rank > worstMyRank)
+    if (availableBeyond.length > 10) {
+      cutoffRank = availableBeyond[9].season_rank
+    }
+  } else if (available.length > 30) {
+    cutoffRank = available[29].season_rank
+  }
+
+  const availableFiltered = cutoffRank != null
+    ? available.filter((p) => p.season_rank <= cutoffRank)
+    : available
+
+  const ranked = [...mineRanked, ...availableFiltered].sort((a, b) => a.season_rank - b.season_rank)
+
+  // Unranked roster players always appear after everyone with a real rank
+  return [...ranked, ...mineUnranked.sort((a, b) => a.name.localeCompare(b.name))]
 }
 
 /**
@@ -155,11 +217,10 @@ function computeSuggestedAdds(myPlayers, freeAgents, positionsSet) {
 }
 
 export default function PreSeasonOptimisePanel() {
-  const [positions, setPositions] = useState([])
+  const [position, setPosition] = useState('QB')
   const [addsTarget, setAddsTarget] = useState(null)
   const [confirmFlagOpen, setConfirmFlagOpen] = useState(false)
   const [updateTarget, setUpdateTarget] = useState(null)
-  const [rosterText, setRosterText] = useState('')
 
   const { data: leagueData, isLoading: leaguesLoading } = useLeagueList()
   const { data: analysisData, isLoading: analysisLoading } = useTeamPreSeasonOptimiseAnalysis()
@@ -186,7 +247,7 @@ export default function PreSeasonOptimisePanel() {
       analysisMap[entry.id] = entry
     }
 
-    const positionsSet = expandPositionFilter(positions)
+    const positionsSet = expandPositionFilter([position])
 
     return leagues
       .map((league) => {
@@ -207,7 +268,7 @@ export default function PreSeasonOptimisePanel() {
         return { league, myTeam, analysis, suggestedAdds }
       })
       .filter(Boolean)
-  }, [leagueData, analysisData, positions])
+  }, [leagueData, analysisData, position])
 
   function handleFlagConfirm() {
     flagMutation.mutate(undefined, {
@@ -216,7 +277,14 @@ export default function PreSeasonOptimisePanel() {
   }
 
   function handleMakeAdds(row) {
-    setAddsTarget({ league: row.league, myTeam: row.myTeam, suggestedAdds: row.suggestedAdds })
+    setAddsTarget({
+      league: row.league,
+      myTeam: row.myTeam,
+      suggestedAdds: row.suggestedAdds,
+      myPlayers: row.analysis?.my_players ?? [],
+      freeAgents: row.analysis?.free_agents ?? [],
+      position,
+    })
   }
 
   function handleAddsBack() {
@@ -230,22 +298,16 @@ export default function PreSeasonOptimisePanel() {
     )
   }
 
-  function openUpdateDialog(league) {
+  function handleUpdate(league) {
     setUpdateTarget(league)
-    setRosterText('')
     rosterMutation.reset()
+    rosterMutation.mutate({ leagueId: league.id })
   }
 
-  function closeUpdateDialog() {
+  function closeUpdateResult() {
     if (rosterMutation.isPending) return
     setUpdateTarget(null)
-    setRosterText('')
     rosterMutation.reset()
-  }
-
-  function handleUpdateSubmit() {
-    if (!updateTarget || !rosterText.trim()) return
-    rosterMutation.mutate({ leagueId: updateTarget.id, data: rosterText })
   }
 
   function byeRowColor(byeWeek) {
@@ -376,7 +438,13 @@ export default function PreSeasonOptimisePanel() {
   }
 
   if (addsTarget) {
-    const adds = addsTarget.suggestedAdds
+    const boardPosition = addsTarget.position ?? position
+    const boardRows = buildPositionBoard(
+      addsTarget.myPlayers ?? [],
+      addsTarget.freeAgents ?? [],
+      [boardPosition],
+    )
+
     return (
       <>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
@@ -411,92 +479,74 @@ export default function PreSeasonOptimisePanel() {
             <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
               Suggested Adds
             </Typography>
-            {(!adds || adds.length === 0) ? (
+            <PositionToggle
+              value={boardPosition}
+              onChange={(next) => setAddsTarget((prev) => (prev ? { ...prev, position: next } : prev))}
+              sx={{ mb: 2 }}
+            />
+
+            {boardRows.length === 0 ? (
               <Typography color="text.secondary" sx={{ py: 3 }}>
-                No suggested adds — no free agent ranks higher than your roster.
+                No ranked players for this position.
               </Typography>
             ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {adds.map((a, i) => {
-                  const currentPos = a.current_positions?.[0] ?? ''
-                  const faPos = a.player_positions?.[0] ?? ''
-                  return (
-                  <Box
-                    key={i}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1,
-                      py: 0.75,
-                      px: 1,
-                      borderRadius: 1,
-                      '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' },
-                    }}
-                  >
-                    <Chip
-                      label={formatPosRankOrPos(a.current_positions, a.current_season_position_rank)}
-                      size="small"
-                      sx={{
-                        width: 60,
-                        height: 24,
-                        fontWeight: 700,
-                        fontSize: '0.7rem',
-                        flexShrink: 0,
-                        bgcolor: POSITION_COLORS[currentPos] ?? '#616161',
-                        color: '#fff',
-                      }}
-                    />
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        color: 'error.light',
-                        textDecoration: 'line-through',
-                        flex: 1,
-                        minWidth: 0,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {a.current_player ?? 'Empty'}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', minWidth: 36, textAlign: 'right', flexShrink: 0 }}>
-                      {formatRank(a.current_season_rank)}
-                    </Typography>
-                    <ArrowForwardIcon sx={{ fontSize: 16, color: 'text.secondary', flexShrink: 0 }} />
-                    <Chip
-                      label={formatPosRankOrPos(a.player_positions, a.player_season_position_rank)}
-                      size="small"
-                      sx={{
-                        width: 60,
-                        height: 24,
-                        fontWeight: 700,
-                        fontSize: '0.7rem',
-                        flexShrink: 0,
-                        bgcolor: POSITION_COLORS[faPos] ?? '#616161',
-                        color: '#fff',
-                      }}
-                    />
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        color: 'success.light',
-                        fontWeight: 600,
-                        flex: 1,
-                        minWidth: 0,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {a.player_name}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', minWidth: 36, textAlign: 'right', flexShrink: 0 }}>
-                      {formatRank(a.player_season_rank)}
-                    </Typography>
-                  </Box>
-                  )
-                })}
+              <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, overflow: 'hidden' }}>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 40px 55px 35px',
+                    gap: 0.5,
+                    px: 1.5,
+                    py: 0.75,
+                    bgcolor: 'background.paper',
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
+                  <Typography sx={HEADER_SX}>Name</Typography>
+                  <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>SZN</Typography>
+                  <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>SPos</Typography>
+                  <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Bye</Typography>
+                </Box>
+
+                <Box sx={{ maxHeight: 520, overflowY: 'auto' }}>
+                  {boardRows.map((row) => {
+                    const bgColor = row._mine
+                      ? (byeRowColor(row.bye_week) ?? 'rgba(212,165,116,0.12)')
+                      : (byeRowColor(row.bye_week) ?? 'transparent')
+                    return (
+                      <Box
+                        key={`${row._mine ? 'mine' : 'fa'}-${row.id}`}
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 40px 55px 35px',
+                          gap: 0.5,
+                          px: 1.5,
+                          py: 0.5,
+                          borderBottom: '1px solid',
+                          borderColor: 'divider',
+                          bgcolor: bgColor,
+                        }}
+                      >
+                        <Typography
+                          variant="body2"
+                          sx={{ ...CELL_SX, color: row._mine ? 'secondary.main' : 'text.primary' }}
+                        >
+                          {displayBoardName(row)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', textAlign: 'right' }}>
+                          {formatRank(row.season_rank)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', textAlign: 'right' }}>
+                          {formatPosRank(row.positions, row.season_position_rank)}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', textAlign: 'right' }}>
+                          {row.bye_week ?? '—'}
+                        </Typography>
+                      </Box>
+                    )
+                  })}
+                </Box>
               </Box>
             )}
           </Box>
@@ -508,8 +558,6 @@ export default function PreSeasonOptimisePanel() {
       </>
     )
   }
-
-  const updateResult = rosterMutation.data
 
   return (
     <>
@@ -528,19 +576,15 @@ export default function PreSeasonOptimisePanel() {
         </Button>
       </Box>
 
-      <PositionToggleMulti value={positions} onChange={setPositions} sx={{ mb: 2.5 }} />
+      <PositionToggle value={position} onChange={setPosition} sx={{ mb: 2.5 }} />
 
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', pt: 6 }}>
           <CircularProgress size={28} />
         </Box>
-      ) : positions.length === 0 ? (
-        <Typography color="text.secondary" sx={{ mt: 3 }}>
-          Select one or more positions to see teams with roster upgrades available.
-        </Typography>
       ) : rows.length === 0 ? (
         <Typography color="text.secondary" sx={{ mt: 3 }}>
-          No teams require pre-season optimisation for the selected positions.
+          No teams require pre-season optimisation for {position}.
         </Typography>
       ) : (
         <TableContainer
@@ -600,8 +644,13 @@ export default function PreSeasonOptimisePanel() {
                     <Button
                       size="small"
                       variant="contained"
-                      startIcon={<SyncIcon />}
-                      onClick={() => openUpdateDialog(row.league)}
+                      startIcon={
+                        rosterMutation.isPending && updateTarget?.id === row.league.id
+                          ? <CircularProgress size={16} color="inherit" />
+                          : <SyncIcon />
+                      }
+                      onClick={() => handleUpdate(row.league)}
+                      disabled={rosterMutation.isPending}
                       sx={{
                         textTransform: 'none',
                         bgcolor: 'primary.main',
@@ -629,68 +678,14 @@ export default function PreSeasonOptimisePanel() {
         isLoading={flagMutation.isPending}
       />
 
-      <PasteDataDialog
+      <RosterUpdateResultDialog
         open={Boolean(updateTarget)}
-        onClose={closeUpdateDialog}
+        onClose={closeUpdateResult}
         title={`Update Rosters — ${updateTarget?.name ?? ''}`}
-        text={rosterText}
-        onTextChange={setRosterText}
-        placeholder={'TeamName\nQB\nPlayer One\nPlayer Two\nRB\nPlayer Three\n...'}
-        onSubmit={handleUpdateSubmit}
         isPending={rosterMutation.isPending}
-        submitDisabled={!rosterText.trim()}
-        showSubmit={!updateResult}
-        closeLabel={updateResult ? 'Close' : 'Cancel'}
-      >
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Paste the full roster data below. This will replace all existing
-          lineup slots for every team in this league.
-        </Typography>
-
-        {rosterMutation.isError && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {rosterMutation.error?.body?.message || rosterMutation.error?.message || 'Something went wrong.'}
-          </Alert>
-        )}
-
-        {updateResult && (
-          <Box sx={{ mb: 2 }}>
-            <Alert severity="success" sx={{ mb: 1.5 }}>
-              Updated {updateResult.teams_matched} team{updateResult.teams_matched !== 1 ? 's' : ''} — {updateResult.slots_created} lineup slot{updateResult.slots_created !== 1 ? 's' : ''} created.
-            </Alert>
-
-            {updateResult.teams_not_found?.length > 0 && (
-              <Alert severity="warning" sx={{ mb: 1 }}>
-                Teams not matched to league: {updateResult.teams_not_found.join(', ')}
-              </Alert>
-            )}
-
-            {updateResult.players_not_found?.length > 0 && (
-              <Box
-                sx={{
-                  maxHeight: 160,
-                  overflowY: 'auto',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1.5,
-                  p: 1,
-                  fontSize: '0.8rem',
-                  bgcolor: 'background.default',
-                }}
-              >
-                <Typography variant="caption" sx={{ display: 'block', mb: 0.5, color: 'text.secondary', fontWeight: 600 }}>
-                  Players not found in database ({updateResult.players_not_found.length})
-                </Typography>
-                {updateResult.players_not_found.map((p, i) => (
-                  <Typography key={i} variant="caption" sx={{ display: 'block', fontFamily: 'monospace' }}>
-                    {p.team} / {p.section}: {p.name}
-                  </Typography>
-                ))}
-              </Box>
-            )}
-          </Box>
-        )}
-      </PasteDataDialog>
+        result={rosterMutation.data}
+        error={rosterMutation.error}
+      />
     </>
   )
 }

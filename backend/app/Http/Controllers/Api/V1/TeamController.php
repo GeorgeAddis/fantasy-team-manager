@@ -9,6 +9,7 @@ use App\Http\Resources\TeamResource;
 use App\Models\LineupSlot;
 use App\Models\Player;
 use App\Models\Team;
+use App\Support\RankingFields;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -51,7 +52,7 @@ class TeamController extends Controller
      */
     public function roster(Team $team): JsonResponse
     {
-        $team->load(['lineupSlots.player.irlFranchise']);
+        $team->load(['league', 'lineupSlots.player.irlFranchise']);
 
         $positionOrder = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'WR3', 'TE', 'RWT', 'K', 'DST', 'BN'];
 
@@ -60,18 +61,14 @@ class TeamController extends Controller
             ->values()
             ->map(fn ($s) => [
                 'lineup_position' => $s->lineup_position->value,
-                'player' => $s->player ? [
+                'player' => $s->player ? array_merge([
                     'id'                    => $s->player->id,
                     'name'                  => $s->player->name,
                     'positions'             => $s->player->positions ?? [],
-                    'season_rank'           => $s->player->season_rank,
-                    'season_position_rank'  => $s->player->season_position_rank,
-                    'week_rank'             => $s->player->week_rank,
-                    'week_position_rank'    => $s->player->week_position_rank,
                     'irl_franchise_abbr'    => $s->player->irlFranchise?->abbreviated_name,
                     'bye_week'              => $s->player->irlFranchise?->bye_week,
                     'do_not_roster'         => $s->player->do_not_roster,
-                ] : null,
+                ], RankingFields::valuesFor($s->player, $team->league)) : null,
             ]);
 
         return response()->json(['data' => $slots]);
@@ -133,12 +130,13 @@ class TeamController extends Controller
                 ->unique()
                 ->toArray();
 
-            // Free agents with any ranking
+            // Free agents with any ranking for this league's scoring format
+            $cols = RankingFields::columns($league);
             $freeAgents = Player::with('irlFranchise')
                 ->whereNotIn('id', $rosteredIds)
-                ->where(function ($q) {
-                    $q->whereNotNull('week_rank')
-                      ->orWhereNotNull('week_position_rank');
+                ->where(function ($q) use ($cols) {
+                    $q->whereNotNull($cols['week_rank'])
+                      ->orWhereNotNull($cols['week_position_rank']);
                 })
                 ->get();
 
@@ -154,7 +152,7 @@ class TeamController extends Controller
 
             // Run the optimal lineup algorithm (same as computeSuggestedChanges but with FA pool)
             $suggestions = $this->computeRosterAddSuggestions(
-                $team, $allPlayers, $freeAgentIds
+                $team, $allPlayers, $freeAgentIds, $league
             );
 
             return [
@@ -199,37 +197,33 @@ class TeamController extends Controller
                 ->unique()
                 ->toArray();
 
+            $cols = RankingFields::columns($league);
             $freeAgents = Player::with('irlFranchise')
                 ->whereNotIn('id', $rosteredIds)
-                ->where(function ($q) {
-                    $q->whereNotNull('season_rank')
-                      ->orWhereNotNull('season_position_rank');
+                ->where(function ($q) use ($cols) {
+                    $q->whereNotNull($cols['season_rank'])
+                      ->orWhereNotNull($cols['season_position_rank']);
                 })
                 ->get()
-                ->map(fn ($p) => [
+                ->map(fn ($p) => array_merge([
                     'id'                    => $p->id,
                     'name'                  => $p->name,
                     'positions'             => $p->positions ?? [],
-                    'season_rank'           => $p->season_rank,
-                    'season_position_rank'  => $p->season_position_rank,
                     'irl_franchise_abbr'    => $p->irlFranchise?->abbreviated_name,
                     'bye_week'              => $p->irlFranchise?->bye_week,
-                ])
+                ], RankingFields::valuesFor($p, $league)))
                 ->values();
 
             $myPlayers = $team->lineupSlots
-                ->filter(fn ($s) => $s->player !== null
-                    && ($s->player->season_rank !== null || $s->player->season_position_rank !== null))
-                ->map(fn ($s) => [
+                ->filter(fn ($s) => $s->player !== null)
+                ->map(fn ($s) => array_merge([
                     'id'                    => $s->player->id,
                     'name'                  => $s->player->name,
                     'positions'             => $s->player->positions ?? [],
-                    'season_rank'           => $s->player->season_rank,
-                    'season_position_rank'  => $s->player->season_position_rank,
                     'irl_franchise_abbr'    => $s->player->irlFranchise?->abbreviated_name,
                     'bye_week'              => $s->player->irlFranchise?->bye_week,
                     'lineup_position'       => $s->lineup_position->value,
-                ])
+                ], RankingFields::valuesFor($s->player, $league)))
                 ->unique('id')
                 ->values();
 
@@ -252,12 +246,17 @@ class TeamController extends Controller
      * but the player pool includes league free agents alongside roster players.
      * Reports which players are incoming (FA or BN) and who they replace.
      */
-    private function computeRosterAddSuggestions(Team $team, $allPlayers, array $freeAgentIds): array
+    private function computeRosterAddSuggestions(Team $team, $allPlayers, array $freeAgentIds, $league = null): array
     {
         $slots = $team->lineupSlots;
         if ($slots->isEmpty() || $allPlayers->isEmpty()) {
             return [];
         }
+
+        $league = $league ?? $team->league;
+        $cols = RankingFields::columns($league);
+        $weekRankCol = $cols['week_rank'];
+        $weekPosCol = $cols['week_position_rank'];
 
         $playerLookup = $allPlayers->keyBy('id');
 
@@ -265,7 +264,7 @@ class TeamController extends Controller
         $positionRankOnly = ['QB', 'K', 'DST'];
         $pool = fn (string $pos) => $allPlayers
             ->filter(fn ($p) => in_array($pos, $p->positions ?? [], true))
-            ->sortBy(in_array($pos, $positionRankOnly, true) ? 'week_position_rank' : 'week_rank')
+            ->sortBy(in_array($pos, $positionRankOnly, true) ? $weekPosCol : $weekRankCol)
             ->values();
 
         // Greedily pick the best unused player(s) for each slot type.
@@ -301,7 +300,7 @@ class TeamController extends Controller
         $flexPool = $allPlayers
             ->filter(fn ($p) => !isset($used[$p->id])
                 && array_intersect(['RB', 'WR', 'TE'], $p->positions ?? []))
-            ->sortBy('week_rank')
+            ->sortBy($weekRankCol)
             ->values();
         $optRWT = $pickOne($flexPool);
 
@@ -370,14 +369,14 @@ class TeamController extends Controller
             if ($replacedId !== null && isset($outgoingRemaining[$replacedId])) {
                 $replacedPlayer = $playerLookup[$replacedId] ?? null;
                 $replacedName = $replacedPlayer?->name;
-                $replacedRank = $replacedPlayer?->week_position_rank;
+                $replacedRank = $replacedPlayer?->{$weekPosCol};
                 unset($outgoingRemaining[$replacedId]);
             } elseif ($replacedId !== null) {
                 // Current holder is staying (reshuffled elsewhere) — find any outgoing player.
                 foreach ($outgoingRemaining as $outId => $_2) {
                     $outPlayer = $playerLookup[$outId] ?? null;
                     $replacedName = $outPlayer?->name;
-                    $replacedRank = $outPlayer?->week_position_rank;
+                    $replacedRank = $outPlayer?->{$weekPosCol};
                     unset($outgoingRemaining[$outId]);
                     break;
                 }
@@ -388,7 +387,7 @@ class TeamController extends Controller
             $suggestions[] = [
                 'position'                    => $targetPos,
                 'player_name'                 => $inPlayer?->name,
-                'player_week_position_rank'   => $inPlayer?->week_position_rank,
+                'player_week_position_rank'   => $inPlayer?->{$weekPosCol},
                 'current_player'              => $replacedName,
                 'current_week_position_rank'  => $replacedRank,
                 'source'                      => $source,
@@ -420,6 +419,10 @@ class TeamController extends Controller
             return [];
         }
 
+        $cols = RankingFields::columns($team->league);
+        $weekRankCol = $cols['week_rank'];
+        $weekPosCol = $cols['week_position_rank'];
+
         $nameOf = $players->pluck('name', 'id')->toArray();
 
         // Pool of players eligible for a given position, sorted best→worst.
@@ -427,7 +430,7 @@ class TeamController extends Controller
         $positionRankOnly = ['QB', 'K', 'DST'];
         $pool = fn (string $pos) => $players
             ->filter(fn ($p) => in_array($pos, $p->positions ?? [], true))
-            ->sortBy(in_array($pos, $positionRankOnly, true) ? 'week_position_rank' : 'week_rank')
+            ->sortBy(in_array($pos, $positionRankOnly, true) ? $weekPosCol : $weekRankCol)
             ->values();
 
         // Greedily pick the best unused player(s) for each slot type.
@@ -463,7 +466,7 @@ class TeamController extends Controller
         $flexPool = $players
             ->filter(fn ($p) => !isset($used[$p->id])
                 && array_intersect(['RB', 'WR', 'TE'], $p->positions ?? []))
-            ->sortBy('week_rank')
+            ->sortBy($weekRankCol)
             ->values();
         $optRWT = $pickOne($flexPool);
 

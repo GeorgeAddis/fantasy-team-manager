@@ -16,6 +16,7 @@ class TeamUpdateRequest extends FormRequest
     {
         return [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'fantrax_id' => ['nullable', 'string', 'max:255'],
             'league_id' => ['sometimes', 'required', 'integer', Rule::exists('leagues', 'id')],
             'my_team' => ['sometimes', 'required', 'boolean'],
         ];
