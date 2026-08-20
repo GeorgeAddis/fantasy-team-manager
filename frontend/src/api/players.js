@@ -64,6 +64,10 @@ export function searchMyTeams(params = {}) {
   return apiFetch(`${path}/search-my-teams?${q}`)
 }
 
+export function getPlayerExposure() {
+  return apiFetch(`${path}/exposure`)
+}
+
 export function importWaiverRankings(data, type, ppr = true) {
   return apiFetch(`${path}/import-waiver-rankings`, {
     method: 'POST',

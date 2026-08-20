@@ -40,6 +40,7 @@ Route::prefix('v1')->group(function () {
     Route::post('players/import-waiver-rankings', [PlayerController::class, 'importWaiverRankings']);
     Route::post('players/import-fantrax-ids', [PlayerController::class, 'importFantraxIds']);
     Route::get('players/search-my-teams', [PlayerController::class, 'searchMyTeams']);
+    Route::get('players/exposure', [PlayerController::class, 'exposure']);
     Route::get('players/stats', [PlayerController::class, 'stats']);
     Route::apiResource('players', PlayerController::class);
     Route::apiResource('lineup-slots', LineupSlotController::class);

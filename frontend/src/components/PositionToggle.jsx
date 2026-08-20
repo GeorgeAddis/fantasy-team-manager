@@ -2,13 +2,25 @@ import { ToggleButton, ToggleButtonGroup } from '@mui/material'
 
 const POSITION_KEYS = ['QB', 'RB', 'WR', 'TE', 'RWT', 'DST', 'K']
 
-export default function PositionToggle({ value, onChange, positions = POSITION_KEYS, sx }) {
+export default function PositionToggle({
+  value,
+  onChange,
+  positions = POSITION_KEYS,
+  exclusive = true,
+  sx,
+}) {
   return (
     <ToggleButtonGroup
       size="small"
-      exclusive
+      exclusive={exclusive}
       value={value}
-      onChange={(_, next) => next && onChange(next)}
+      onChange={(_, next) => {
+        if (exclusive) {
+          if (next) onChange(next)
+          return
+        }
+        onChange(next ?? [])
+      }}
       sx={{
         '& .MuiToggleButton-root': {
           textTransform: 'none',

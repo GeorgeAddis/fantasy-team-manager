@@ -99,6 +99,14 @@ export function useSearchMyTeams(params = {}, options = {}) {
   })
 }
 
+export function usePlayerExposure(options = {}) {
+  return useQuery({
+    queryKey: queryKeys.players.exposure,
+    queryFn: () => api.getPlayerExposure(),
+    enabled: options.enabled !== false,
+  })
+}
+
 export function useDoNotRosterList() {
   return useQuery({
     queryKey: queryKeys.players.doNotRoster,

@@ -14,7 +14,7 @@ import {
 } from '@mui/material'
 import SyncIcon from '@mui/icons-material/Sync'
 import ListAltIcon from '@mui/icons-material/ListAlt'
-import { useLeagueList, useUpdateRosters } from '@/hooks/useLeagues'
+import { useLeagueList, useUpdateRosters, useUpdateAllRosters } from '@/hooks/useLeagues'
 import RosterDialog from '@/components/RosterDialog'
 import RosterUpdateResultDialog from '@/components/RosterUpdateResultDialog'
 
@@ -35,6 +35,8 @@ export default function UpdateTeamsPage() {
   const leagues = leagueQuery.data?.data ?? []
   const [updateTarget, setUpdateTarget] = useState(null)
   const rosterMutation = useUpdateRosters()
+  const updateAllRostersMutation = useUpdateAllRosters()
+  const [updateAllOpen, setUpdateAllOpen] = useState(false)
   const [rosterTarget, setRosterTarget] = useState(null)
 
   const sorted = useMemo(() => {
@@ -58,6 +60,12 @@ export default function UpdateTeamsPage() {
     rosterMutation.reset()
   }
 
+  function closeUpdateAllResult() {
+    if (updateAllRostersMutation.isPending) return
+    setUpdateAllOpen(false)
+    updateAllRostersMutation.reset()
+  }
+
   return (
     <Box
       sx={{
@@ -67,10 +75,46 @@ export default function UpdateTeamsPage() {
         alignItems: 'center',
       }}
     >
-      <Typography variant="h5" gutterBottom color="secondary.main">
-        Update Teams
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 3, textAlign: 'center' }}>
+      <Box
+        sx={{
+          width: '100%',
+          maxWidth: 800,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 2,
+          mb: 1,
+        }}
+      >
+        <Typography variant="h5" color="secondary.main">
+          Update Teams
+        </Typography>
+        {sorted.length > 0 && (
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={
+              updateAllRostersMutation.isPending
+                ? <CircularProgress size={16} color="inherit" />
+                : <SyncIcon />
+            }
+            disabled={updateAllRostersMutation.isPending || rosterMutation.isPending}
+            onClick={() => {
+              setUpdateAllOpen(true)
+              updateAllRostersMutation.reset()
+              updateAllRostersMutation.mutate()
+            }}
+            sx={{
+              textTransform: 'none',
+              bgcolor: 'primary.main',
+              '&:hover': { bgcolor: 'primary.dark' },
+            }}
+          >
+            Update All
+          </Button>
+        )}
+      </Box>
+      <Typography color="text.secondary" sx={{ mb: 3, textAlign: 'center', width: '100%', maxWidth: 800 }}>
         Sync rosters from Fantrax for each of your leagues.
       </Typography>
 
@@ -164,7 +208,7 @@ export default function UpdateTeamsPage() {
                         variant="contained"
                         startIcon={updatingThis ? <CircularProgress size={16} color="inherit" /> : <SyncIcon />}
                         onClick={() => handleUpdate(league)}
-                        disabled={rosterMutation.isPending}
+                        disabled={rosterMutation.isPending || updateAllRostersMutation.isPending}
                         sx={{
                           textTransform: 'none',
                           bgcolor: 'primary.main',
@@ -189,6 +233,15 @@ export default function UpdateTeamsPage() {
         isPending={rosterMutation.isPending}
         result={rosterMutation.data}
         error={rosterMutation.error}
+      />
+
+      <RosterUpdateResultDialog
+        open={updateAllOpen}
+        onClose={closeUpdateAllResult}
+        title="Update All Rosters"
+        isPending={updateAllRostersMutation.isPending}
+        result={updateAllRostersMutation.data}
+        error={updateAllRostersMutation.error}
       />
 
       <RosterDialog

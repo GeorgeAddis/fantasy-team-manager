@@ -1231,6 +1231,73 @@ class PlayerController extends Controller
     }
 
     /**
+     * Players rostered on any of "my teams", with exposure counts across all my teams.
+     * PPR and non-PPR leagues are grouped together.
+     */
+    public function exposure(): JsonResponse
+    {
+        $myTeams = \App\Models\Team::where('my_team', true)->get();
+        $totalTeams = $myTeams->count();
+        $teamIds = $myTeams->pluck('id')->all();
+
+        if ($totalTeams === 0) {
+            return response()->json([
+                'data' => [],
+                'total_teams' => 0,
+            ]);
+        }
+
+        $slots = \App\Models\LineupSlot::query()
+            ->whereIn('team_id', $teamIds)
+            ->whereNotNull('player_id')
+            ->with('player.irlFranchise')
+            ->get();
+
+        $byPlayer = [];
+        foreach ($slots as $slot) {
+            $player = $slot->player;
+            if (!$player) {
+                continue;
+            }
+
+            $id = $player->id;
+            if (!isset($byPlayer[$id])) {
+                $byPlayer[$id] = [
+                    'id' => $id,
+                    'name' => $player->name,
+                    'positions' => $player->positions ?? [],
+                    'irl_franchise_abbr' => $player->irlFranchise?->abbreviated_name,
+                    'irl_franchise_name' => $player->irlFranchise?->name,
+                    'season_rank' => $player->season_rank,
+                    'season_rank_non_ppr' => $player->season_rank_non_ppr,
+                    'team_ids' => [],
+                ];
+            }
+            $byPlayer[$id]['team_ids'][$slot->team_id] = true;
+        }
+
+        $data = collect($byPlayer)
+            ->map(function (array $row) use ($totalTeams) {
+                $teamCount = count($row['team_ids']);
+                unset($row['team_ids']);
+                $row['team_count'] = $teamCount;
+                $row['exposure_pct'] = round(($teamCount / $totalTeams) * 100, 1);
+
+                return $row;
+            })
+            ->sortBy([
+                ['team_count', 'desc'],
+                ['name', 'asc'],
+            ])
+            ->values();
+
+        return response()->json([
+            'data' => $data,
+            'total_teams' => $totalTeams,
+        ]);
+    }
+
+    /**
      * Get teams (my teams) that have do-not-roster players on their roster.
      */
     public function doNotRosterTeams(): JsonResponse

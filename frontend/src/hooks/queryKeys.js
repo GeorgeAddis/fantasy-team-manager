@@ -22,6 +22,7 @@ export const queryKeys = {
     detail: (id) => ['players', 'detail', id],
     stats: ['players', 'stats'],
     searchMyTeams: (params) => ['players', 'searchMyTeams', params],
+    exposure: ['players', 'exposure'],
     doNotRoster: ['players', 'doNotRoster'],
     doNotRosterTeams: ['players', 'doNotRosterTeams'],
   },
