@@ -99,10 +99,10 @@ export function useSearchMyTeams(params = {}, options = {}) {
   })
 }
 
-export function usePlayerExposure(options = {}) {
+export function usePlayerExposure(params = {}, options = {}) {
   return useQuery({
-    queryKey: queryKeys.players.exposure,
-    queryFn: () => api.getPlayerExposure(),
+    queryKey: queryKeys.players.exposure(params),
+    queryFn: () => api.getPlayerExposure(params),
     enabled: options.enabled !== false,
   })
 }

@@ -17,6 +17,7 @@ class LeagueImportFantraxRequest extends FormRequest
             'name'       => ['required', 'string', 'max:255'],
             'fantrax_id' => ['required', 'string', 'max:255'],
             'ppr'        => ['sometimes', 'boolean'],
+            'bestball'   => ['sometimes', 'boolean'],
         ];
     }
 }

@@ -15,6 +15,7 @@ class LeagueResource extends JsonResource
             'name' => $this->name,
             'fantrax_id' => $this->fantrax_id,
             'ppr' => (bool) $this->ppr,
+            'bestball' => (bool) $this->bestball,
             'teams' => $this->whenLoaded('teams', function () {
                 return $this->teams
                     ->sortBy('id')

@@ -16,6 +16,7 @@ import { usePlayerExposure } from '@/hooks/usePlayers'
 
 const HEAD_CELL = { fontWeight: 700, color: 'text.secondary' }
 const EXPOSURE_POSITIONS = ['ALL', 'QB', 'RB', 'WR', 'TE', 'RWT', 'DST', 'K', 'TOP24', 'TOP48']
+const EXPOSURE_POSITIONS_NO_K = ['ALL', 'QB', 'RB', 'WR', 'TE', 'RWT', 'DST', 'TOP24', 'TOP48']
 
 function formatPositions(positions) {
   if (!Array.isArray(positions) || positions.length === 0) return '—'
@@ -26,6 +27,10 @@ function formatPct(value) {
   if (value == null || Number.isNaN(Number(value))) return '—'
   const n = Number(value)
   return Number.isInteger(n) ? `${n}%` : `${n.toFixed(1)}%`
+}
+
+function isKicker(row) {
+  return (row.positions ?? []).includes('K')
 }
 
 function isRankedWithin(rank, max) {
@@ -53,18 +58,34 @@ const TOP_N_FILTERS = {
   TOP48: 48,
 }
 
-export default function PlayerExposurePanel() {
-  const { data, isLoading } = usePlayerExposure()
+export default function PlayerExposurePanel({
+  title = 'Player Exposure',
+  subtitle = 'Players on your teams across all leagues',
+  bestball = 'all',
+}) {
+  const isBestballView = bestball === true || bestball === 'true'
+  const isAllView = bestball === 'all'
+  // Bestball has no kickers; All exposure keeps kickers (with % vs standard teams from API).
+  const excludeKickers = isBestballView
+  const positionOptions = excludeKickers ? EXPOSURE_POSITIONS_NO_K : EXPOSURE_POSITIONS
+
+  const exposureParams = isAllView ? {} : { bestball: isBestballView }
+  const { data, isLoading } = usePlayerExposure(exposureParams)
   const [position, setPosition] = useState('ALL')
   const rows = data?.data ?? []
   const totalTeams = data?.total_teams ?? 0
 
+  const scopedRows = useMemo(() => {
+    if (!excludeKickers) return rows
+    return rows.filter((row) => !isKicker(row))
+  }, [rows, excludeKickers])
+
   const filteredRows = useMemo(() => {
-    if (position === 'ALL') return rows
+    if (position === 'ALL') return scopedRows
 
     const topN = TOP_N_FILTERS[position]
     if (topN != null) {
-      return [...rows]
+      return [...scopedRows]
         .filter((row) => isTopNPlayer(row, topN))
         .sort((a, b) =>
           (Number(b.exposure_pct) || 0) - (Number(a.exposure_pct) || 0)
@@ -74,12 +95,12 @@ export default function PlayerExposurePanel() {
     }
 
     const filterSet = expandPositionFilter(position)
-    return rows.filter((row) =>
+    return scopedRows.filter((row) =>
       (row.positions ?? []).some((pos) => filterSet.has(pos)),
     )
-  }, [rows, position])
+  }, [scopedRows, position])
 
-  const emptyMessage = rows.length === 0
+  const emptyMessage = scopedRows.length === 0
     ? 'No rostered players found on your teams yet.'
     : TOP_N_FILTERS[position] != null
       ? `None of your rostered players are in the top ${TOP_N_FILTERS[position]} season rankings.`
@@ -88,17 +109,17 @@ export default function PlayerExposurePanel() {
   return (
     <Box>
       <Typography variant="h6" fontWeight={700} sx={{ mb: 0.5, color: 'text.primary' }}>
-        Player Exposure
+        {title}
       </Typography>
       <Typography color="text.secondary" sx={{ mb: 2 }}>
-        Players on your teams across all leagues
+        {subtitle}
         {totalTeams > 0 ? ` (${totalTeams} team${totalTeams === 1 ? '' : 's'})` : ''}.
       </Typography>
 
       <PositionToggle
-        value={position}
+        value={positionOptions.includes(position) ? position : 'ALL'}
         onChange={setPosition}
-        positions={EXPOSURE_POSITIONS}
+        positions={positionOptions}
         sx={{ mb: 2.5 }}
       />
 

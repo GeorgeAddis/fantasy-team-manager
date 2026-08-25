@@ -7,11 +7,15 @@ import {
 } from '@mui/material'
 import WavingHandIcon from '@mui/icons-material/WavingHand'
 import DonutLargeIcon from '@mui/icons-material/DonutLarge'
+import SportsFootballIcon from '@mui/icons-material/SportsFootball'
+import GroupsIcon from '@mui/icons-material/Groups'
 import PlayerExposurePanel from './PlayerExposurePanel'
 
 const SECTIONS = [
   { value: 'welcome', label: 'Welcome', icon: WavingHandIcon },
-  { value: 'player-exposure', label: 'Player Exposure', icon: DonutLargeIcon },
+  { value: 'all-exposure', label: 'All Player Exposure', icon: DonutLargeIcon },
+  { value: 'bestball-exposure', label: 'Bestball Exposure', icon: SportsFootballIcon },
+  { value: 'standard-exposure', label: 'Standard Exposure', icon: GroupsIcon },
 ]
 
 function WelcomePanel() {
@@ -28,8 +32,8 @@ function WelcomePanel() {
         Your fantasy football command centre.
       </Typography>
       <Typography color="text.secondary" sx={{ fontSize: '1.05rem', lineHeight: 1.7 }}>
-        Use the sidebar to jump between overview tools. Start with Player Exposure to see
-        how often each of your players shows up across all of your teams.
+        Use the sidebar to jump between overview tools. Check player exposure across all
+        leagues, or split bestball and standard.
       </Typography>
     </Box>
   )
@@ -95,7 +99,27 @@ export default function OverviewPage() {
 
       <Box sx={{ flex: 1, minWidth: 0, p: 3, overflowY: 'auto' }}>
         {section === 'welcome' && <WelcomePanel />}
-        {section === 'player-exposure' && <PlayerExposurePanel />}
+        {section === 'all-exposure' && (
+          <PlayerExposurePanel
+            title="All Player Exposure"
+            subtitle="Players on your teams across all leagues (bestball and standard)"
+            bestball="all"
+          />
+        )}
+        {section === 'bestball-exposure' && (
+          <PlayerExposurePanel
+            title="Bestball Exposure"
+            subtitle="Players on your bestball teams"
+            bestball
+          />
+        )}
+        {section === 'standard-exposure' && (
+          <PlayerExposurePanel
+            title="Standard Exposure"
+            subtitle="Players on your standard (non-bestball) teams"
+            bestball={false}
+          />
+        )}
       </Box>
     </Box>
   )

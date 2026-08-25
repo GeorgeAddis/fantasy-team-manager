@@ -33,8 +33,17 @@ export function useImportFantraxLeague() {
     mutationFn: (body) => leaguesApi.importFantraxLeague(body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+      qc.invalidateQueries({ queryKey: queryKeys.leagues.fantraxAvailable })
       qc.invalidateQueries({ queryKey: queryKeys.teams.all })
     },
+  })
+}
+
+export function useFantraxAvailable(options = {}) {
+  return useQuery({
+    queryKey: queryKeys.leagues.fantraxAvailable,
+    queryFn: () => leaguesApi.listFantraxAvailable(),
+    enabled: options.enabled !== false,
   })
 }
 
@@ -221,7 +230,7 @@ export function useUpdateRosters() {
 export function useUpdateAllRosters() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => leaguesApi.updateAllRosters(),
+    mutationFn: (vars = {}) => leaguesApi.updateAllRosters(vars),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
       qc.invalidateQueries({ queryKey: queryKeys.teams.all })

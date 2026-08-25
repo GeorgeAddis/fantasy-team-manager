@@ -17,6 +17,7 @@ class LeagueStoreRequest extends FormRequest
             'name'       => ['required', 'string', 'max:255'],
             'fantrax_id' => ['nullable', 'string', 'max:255'],
             'ppr'        => ['sometimes', 'boolean'],
+            'bestball'   => ['sometimes', 'boolean'],
         ];
     }
 }

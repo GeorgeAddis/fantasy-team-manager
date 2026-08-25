@@ -64,8 +64,13 @@ export function searchMyTeams(params = {}) {
   return apiFetch(`${path}/search-my-teams?${q}`)
 }
 
-export function getPlayerExposure() {
-  return apiFetch(`${path}/exposure`)
+export function getPlayerExposure(params = {}) {
+  const q = new URLSearchParams()
+  if (params.bestball != null && params.bestball !== 'all') {
+    q.set('bestball', params.bestball ? '1' : '0')
+  }
+  const qs = q.toString()
+  return apiFetch(qs ? `${path}/exposure?${qs}` : `${path}/exposure`)
 }
 
 export function importWaiverRankings(data, type, ppr = true) {

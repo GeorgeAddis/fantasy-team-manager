@@ -55,6 +55,59 @@ class LeagueController extends Controller
     }
 
     /**
+     * NFL leagues from Fantrax getLeagues that are not yet in our database.
+     */
+    public function fantraxAvailable(): JsonResponse
+    {
+        $userSecretId = config('services.fantrax.user_secret_id');
+        if (!$userSecretId) {
+            return response()->json([
+                'message' => 'FANTRAX_USER_SECRET_ID is not set in the backend .env file.',
+            ], 422);
+        }
+
+        $response = Http::timeout(30)->get('https://www.fantrax.com/fxea/general/getLeagues', [
+            'userSecretId' => $userSecretId,
+        ]);
+
+        if (!$response->successful()) {
+            return response()->json([
+                'message' => 'Failed to fetch leagues from Fantrax (HTTP ' . $response->status() . ').',
+            ], 502);
+        }
+
+        $importedIds = League::query()
+            ->whereNotNull('fantrax_id')
+            ->pluck('fantrax_id')
+            ->map(fn ($id) => (string) $id)
+            ->all();
+        $importedSet = array_flip($importedIds);
+
+        $available = collect($response->json('leagues') ?? [])
+            ->filter(function ($entry) use ($importedSet) {
+                if (!is_array($entry)) {
+                    return false;
+                }
+                $sport = strtoupper(trim((string) ($entry['sport'] ?? '')));
+                $leagueId = (string) ($entry['leagueId'] ?? '');
+                if ($sport !== 'NFL' || $leagueId === '') {
+                    return false;
+                }
+
+                return !isset($importedSet[$leagueId]);
+            })
+            ->map(fn ($entry) => [
+                'league_name' => (string) ($entry['leagueName'] ?? ''),
+                'league_id' => (string) ($entry['leagueId'] ?? ''),
+                'team_name' => (string) ($entry['teamName'] ?? ''),
+            ])
+            ->sortBy('league_name', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
+
+        return response()->json(['data' => $available]);
+    }
+
+    /**
      * Create a league and its teams from Fantrax getLeagueInfo + getLeagues.
      * Marks the user's owned team via FANTRAX_USER_SECRET_ID.
      */
@@ -63,6 +116,7 @@ class LeagueController extends Controller
         $fantraxLeagueId = $request->validated('fantrax_id');
         $leagueName = $request->validated('name');
         $ppr = $request->boolean('ppr', true);
+        $bestball = $request->boolean('bestball', false);
         $userSecretId = config('services.fantrax.user_secret_id');
 
         if (!$userSecretId) {
@@ -112,11 +166,12 @@ class LeagueController extends Controller
             }
         }
 
-        $league = DB::transaction(function () use ($leagueName, $fantraxLeagueId, $ppr, $teamInfo, $myTeamId) {
+        $league = DB::transaction(function () use ($leagueName, $fantraxLeagueId, $ppr, $bestball, $teamInfo, $myTeamId) {
             $league = League::query()->create([
                 'name' => $leagueName,
                 'fantrax_id' => $fantraxLeagueId,
                 'ppr' => $ppr,
+                'bestball' => $bestball,
             ]);
 
             foreach ($teamInfo as $teamId => $team) {
@@ -141,51 +196,51 @@ class LeagueController extends Controller
     }
 
     /**
-     * Set requires_waiver_claim = true on all leagues.
+     * Set requires_waiver_claim = true on all non-bestball leagues.
      */
     public function flagWaiverClaims(): JsonResponse
     {
-        $count = League::query()->update(['requires_waiver_claim' => true]);
+        $count = League::query()->where('bestball', false)->update(['requires_waiver_claim' => true]);
 
         return response()->json(['leagues_flagged' => $count]);
     }
 
     /**
-     * Set requires_roster_moves = true on all leagues.
+     * Set requires_roster_moves = true on all non-bestball leagues.
      */
     public function flagRosterMoves(): JsonResponse
     {
-        $count = League::query()->update(['requires_roster_moves' => true]);
+        $count = League::query()->where('bestball', false)->update(['requires_roster_moves' => true]);
 
         return response()->json(['leagues_flagged' => $count]);
     }
 
     /**
-     * Set requires_roster_optimised = true on all leagues.
+     * Set requires_roster_optimised = true on all non-bestball leagues.
      */
     public function flagRosterOptimisation(): JsonResponse
     {
-        $count = League::query()->update(['requires_roster_optimised' => true]);
+        $count = League::query()->where('bestball', false)->update(['requires_roster_optimised' => true]);
 
         return response()->json(['leagues_flagged' => $count]);
     }
 
     /**
-     * Set requires_thursday_update = true on all leagues.
+     * Set requires_thursday_update = true on all non-bestball leagues.
      */
     public function flagThursdayUpdate(): JsonResponse
     {
-        $count = League::query()->update(['requires_thursday_update' => true]);
+        $count = League::query()->where('bestball', false)->update(['requires_thursday_update' => true]);
 
         return response()->json(['leagues_flagged' => $count]);
     }
 
     /**
-     * Set requires_pre_season_optimised = true on all leagues.
+     * Set requires_pre_season_optimised = true on all non-bestball leagues.
      */
     public function flagPreSeasonOptimisation(): JsonResponse
     {
-        $count = League::query()->update(['requires_pre_season_optimised' => true]);
+        $count = League::query()->where('bestball', false)->update(['requires_pre_season_optimised' => true]);
 
         return response()->json(['leagues_flagged' => $count]);
     }
@@ -271,12 +326,16 @@ class LeagueController extends Controller
     }
 
     /**
-     * Sync rosters for every league that has a "my team" and a Fantrax league ID.
+     * Sync rosters for leagues that have a "my team" and a Fantrax league ID.
+     * Pass bestball=true to update only bestball leagues; otherwise only standard leagues.
      */
-    public function updateAllRosters(): JsonResponse
+    public function updateAllRosters(Request $request): JsonResponse
     {
+        $bestball = $request->boolean('bestball', false);
+
         $leagues = League::query()
             ->whereNotNull('fantrax_id')
+            ->where('bestball', $bestball)
             ->whereHas('teams', fn ($q) => $q->where('my_team', true))
             ->with('teams')
             ->orderBy('id')
@@ -288,6 +347,7 @@ class LeagueController extends Controller
             'leagues_failed' => 0,
             'teams_matched' => 0,
             'slots_created' => 0,
+            'bestball' => $bestball,
         ];
 
         foreach ($leagues as $league) {
@@ -360,16 +420,6 @@ class LeagueController extends Controller
 
         $playerByFantraxId = $this->buildPlayerFantraxIdLookup();
 
-        $slotMap = [
-            'QB'  => ['QB'],
-            'RB'  => ['RB1', 'RB2'],
-            'WR'  => ['WR1', 'WR2', 'WR3'],
-            'TE'  => ['TE'],
-            'RWT' => ['RWT'],
-            'K'   => ['K'],
-            'DST' => ['DST'],
-        ];
-
         $results = [
             'teams_matched' => 0,
             'teams_not_found' => [],
@@ -396,44 +446,15 @@ class LeagueController extends Controller
 
             $results['teams_matched']++;
 
-            $itemsByPos = [];
-            foreach ($roster['rosterItems'] ?? [] as $item) {
-                if (!is_array($item)) {
-                    continue;
-                }
-                $fantraxPlayerId = (string) ($item['id'] ?? '');
-                $pos = $this->mapFantraxRosterPosition((string) ($item['position'] ?? ''));
-                if ($fantraxPlayerId === '' || $pos === null) {
-                    continue;
-                }
-                $itemsByPos[$pos][] = $fantraxPlayerId;
-            }
-
-            foreach ($itemsByPos as $posKey => $fantraxIds) {
-                $starters = $slotMap[$posKey] ?? [];
-                foreach ($fantraxIds as $idx => $fantraxPlayerId) {
-                    $player = $playerByFantraxId[$fantraxPlayerId] ?? null;
-                    $playerId = $player?->id;
-
-                    if ($playerId === null) {
-                        $results['players_not_found'][] = [
-                            'team' => $team->name,
-                            'section' => $posKey,
-                            'name' => $fantraxPlayerId,
-                        ];
-                    }
-
-                    $slotPosition = $idx < count($starters) ? $starters[$idx] : 'BN';
-
-                    $newSlots[] = [
-                        'team_id' => $team->id,
-                        'player_id' => $playerId,
-                        'lineup_position' => $slotPosition,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ];
-                    $results['slots_created']++;
-                }
+            $teamSlots = $this->assignSlotsFromFantraxRoster(
+                $team,
+                $roster['rosterItems'] ?? [],
+                $playerByFantraxId,
+                $results,
+            );
+            foreach ($teamSlots as $slot) {
+                $newSlots[] = $slot;
+                $results['slots_created']++;
             }
         }
 
@@ -448,6 +469,142 @@ class LeagueController extends Controller
         });
 
         return $results;
+    }
+
+    /**
+     * Map Fantrax ACTIVE/RESERVE roster items onto our lineup slots.
+     * ACTIVE players fill position starters; one leftover RB/WR/TE (or Fantrax RWT) → RWT;
+     * RESERVE (and any leftover ACTIVE) → BN.
+     *
+     * @param  array<int, mixed>  $rosterItems
+     * @param  array<string, \App\Models\Player>  $playerByFantraxId
+     * @param  array<string, mixed>  $results
+     * @return list<array<string, mixed>>
+     */
+    private function assignSlotsFromFantraxRoster(
+        Team $team,
+        array $rosterItems,
+        array $playerByFantraxId,
+        array &$results,
+    ): array {
+        $starterSlots = [
+            'QB'  => ['QB'],
+            'RB'  => ['RB1', 'RB2'],
+            'WR'  => ['WR1', 'WR2', 'WR3'],
+            'TE'  => ['TE'],
+            'K'   => ['K'],
+            'DST' => ['DST'],
+        ];
+
+        $activeByPos = [];
+        $benchFantraxIds = [];
+
+        foreach ($rosterItems as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $fantraxPlayerId = (string) ($item['id'] ?? '');
+            $pos = $this->mapFantraxRosterPosition((string) ($item['position'] ?? ''));
+            if ($fantraxPlayerId === '' || $pos === null) {
+                continue;
+            }
+
+            $status = strtoupper(trim((string) ($item['status'] ?? '')));
+            if ($status === 'ACTIVE') {
+                $activeByPos[$pos][] = $fantraxPlayerId;
+            } else {
+                // RESERVE (or any non-ACTIVE) → bench
+                $benchFantraxIds[] = $fantraxPlayerId;
+            }
+        }
+
+        $assignments = []; // lineup_position => fantrax player id
+        $used = [];
+
+        foreach ($starterSlots as $pos => $slots) {
+            $pool = $activeByPos[$pos] ?? [];
+            foreach ($slots as $i => $slot) {
+                if (!isset($pool[$i])) {
+                    break;
+                }
+                $assignments[$slot] = $pool[$i];
+                $used[$pool[$i]] = true;
+            }
+        }
+
+        // Flex: Fantrax-labeled RWT first, then leftover ACTIVE RB/WR/TE
+        $flexCandidates = [];
+        foreach ($activeByPos['RWT'] ?? [] as $fid) {
+            if (!isset($used[$fid])) {
+                $flexCandidates[] = $fid;
+            }
+        }
+        foreach (['RB', 'WR', 'TE'] as $pos) {
+            $slots = $starterSlots[$pos];
+            $pool = $activeByPos[$pos] ?? [];
+            for ($i = count($slots); $i < count($pool); $i++) {
+                if (!isset($used[$pool[$i]])) {
+                    $flexCandidates[] = $pool[$i];
+                }
+            }
+        }
+
+        if ($flexCandidates !== []) {
+            $assignments['RWT'] = $flexCandidates[0];
+            $used[$flexCandidates[0]] = true;
+            for ($i = 1, $n = count($flexCandidates); $i < $n; $i++) {
+                $benchFantraxIds[] = $flexCandidates[$i];
+            }
+        }
+
+        // Any remaining ACTIVE (e.g. 2nd QB) → bench
+        foreach ($activeByPos as $pool) {
+            foreach ($pool as $fid) {
+                if (!isset($used[$fid])) {
+                    $benchFantraxIds[] = $fid;
+                }
+            }
+        }
+
+        $now = now();
+        $rows = [];
+
+        $append = function (string $fantraxPlayerId, string $lineupPosition) use (
+            &$rows,
+            &$results,
+            $team,
+            $playerByFantraxId,
+            $now,
+        ): void {
+            $player = $playerByFantraxId[$fantraxPlayerId] ?? null;
+            $playerId = $player?->id;
+
+            if ($playerId === null) {
+                $results['players_not_found'][] = [
+                    'team' => $team->name,
+                    'section' => $lineupPosition,
+                    'name' => $fantraxPlayerId,
+                ];
+            }
+
+            $rows[] = [
+                'team_id' => $team->id,
+                'player_id' => $playerId,
+                'lineup_position' => $lineupPosition,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        };
+
+        foreach ($assignments as $lineupPosition => $fantraxPlayerId) {
+            $append($fantraxPlayerId, $lineupPosition);
+        }
+        foreach ($benchFantraxIds as $fantraxPlayerId) {
+            $append($fantraxPlayerId, 'BN');
+        }
+
+        return $rows;
     }
 
     /**

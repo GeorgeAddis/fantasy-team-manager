@@ -250,6 +250,7 @@ export default function PreSeasonOptimisePanel() {
     const positionsSet = expandPositionFilter([position])
 
     return leagues
+      .filter((league) => !league.bestball)
       .map((league) => {
         if (!league.requires_pre_season_optimised) return null
         const myTeam = league.teams?.find((t) => t.my_team) ?? null
@@ -368,7 +369,9 @@ export default function PreSeasonOptimisePanel() {
           </>
         ) : (
           <>
-            <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary', fontSize: '0.8rem' }}>Empty</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main', fontSize: '0.8rem' }}>
+              EMPTY SLOT
+            </Typography>
             <Typography variant="caption" />
             <Typography variant="caption" />
             <Typography variant="caption" />

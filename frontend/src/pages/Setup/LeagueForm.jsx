@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Card,
+  CardActionArea,
   CircularProgress,
   Switch,
   TextField,
@@ -17,6 +18,7 @@ import {
   useImportFantraxLeague,
   useUpdateLeague,
   useDeleteLeague,
+  useFantraxAvailable,
 } from '@/hooks/useLeagues'
 import {
   useCreateTeam,
@@ -59,6 +61,7 @@ export default function LeagueForm({ mode, record, onSaved }) {
   const [leagueName, setLeagueName] = useState('')
   const [fantraxId, setFantraxId] = useState('')
   const [ppr, setPpr] = useState(true)
+  const [bestball, setBestball] = useState(false)
   const [teams, setTeams] = useState(makeBlankTeams)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -67,17 +70,21 @@ export default function LeagueForm({ mode, record, onSaved }) {
   const removeLeague = useDeleteLeague()
   const createTeam = useCreateTeam()
   const updateTeam = useUpdateTeam()
+  const availableQuery = useFantraxAvailable({ enabled: mode === 'create' })
+  const availableLeagues = availableQuery.data?.data ?? []
 
   useEffect(() => {
     if (mode === 'edit' && record) {
       setLeagueName(record.name ?? '')
       setFantraxId(record.fantrax_id ?? '')
       setPpr(record.ppr !== false)
+      setBestball(Boolean(record.bestball))
       setTeams(buildTeamsFromRecord(record.teams ?? []))
     } else {
       setLeagueName('')
       setFantraxId('')
       setPpr(true)
+      setBestball(false)
       setTeams(makeBlankTeams())
     }
   }, [mode, record])
@@ -116,6 +123,13 @@ export default function LeagueForm({ mode, record, onSaved }) {
     )
   }
 
+  function selectAvailableLeague(league) {
+    setLeagueName(league.league_name || '')
+    setFantraxId(league.league_id || '')
+    const name = league.league_name || ''
+    setBestball(/best\s*ball/i.test(name))
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     try {
@@ -124,17 +138,19 @@ export default function LeagueForm({ mode, record, onSaved }) {
           name: leagueName,
           fantrax_id: fantraxId,
           ppr,
+          bestball,
         })
         setLeagueName('')
         setFantraxId('')
         setPpr(true)
+        setBestball(false)
         setTeams(makeBlankTeams())
         onSaved?.()
         return
       }
 
       let leagueId = record?.id
-      const leaguePayload = { name: leagueName, fantrax_id: fantraxId || null, ppr }
+      const leaguePayload = { name: leagueName, fantrax_id: fantraxId || null, ppr, bestball }
       if (record) {
         await updateLeague.mutateAsync({ id: record.id, ...leaguePayload })
       }
@@ -209,8 +225,9 @@ export default function LeagueForm({ mode, record, onSaved }) {
           display: 'flex',
           alignItems: 'center',
           gap: 1,
-          mb: 3,
+          mb: mode === 'create' ? 2 : 3,
           px: 0.5,
+          flexWrap: 'wrap',
         }}
       >
         <Typography
@@ -226,16 +243,152 @@ export default function LeagueForm({ mode, record, onSaved }) {
           onChange={() => setPpr((v) => !v)}
           color="secondary"
         />
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
           {ppr ? 'Uses PPR rankings' : 'Uses non-PPR rankings'}
         </Typography>
+
+        <Typography
+          variant="body2"
+          color={bestball ? 'secondary.main' : 'text.secondary'}
+          sx={{ userSelect: 'none', fontWeight: bestball ? 600 : 400 }}
+        >
+          Bestball
+        </Typography>
+        <Switch
+          size="small"
+          checked={bestball}
+          onChange={() => setBestball((v) => !v)}
+          color="secondary"
+        />
+        <Typography variant="caption" color="text.secondary">
+          {bestball ? 'Bestball league' : 'Standard league'}
+        </Typography>
+
+        <Box sx={{ flex: 1 }} />
+
+        {mode === 'create' ? (
+          <Button
+            type="submit"
+            variant="contained"
+            size="small"
+            startIcon={
+              mutation.isPending ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <CloudDownloadIcon />
+              )
+            }
+            disabled={isPending}
+            sx={{
+              textTransform: 'none',
+              bgcolor: 'primary.main',
+              '&:hover': { bgcolor: 'primary.dark' },
+            }}
+          >
+            Import League from Fantrax
+          </Button>
+        ) : null}
       </Box>
 
       {mode === 'create' && (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Teams are imported from Fantrax automatically (all teams in the league,
-          with yours marked as Mine).
-        </Typography>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
+            Available Fantrax Leagues
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            NFL leagues on your account that are not imported yet. Click one to fill the form.
+          </Typography>
+
+          {availableQuery.isLoading && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+              <CircularProgress size={24} />
+            </Box>
+          )}
+
+          {availableQuery.isError && (
+            <Alert severity="error" sx={{ mb: 1 }}>
+              {availableQuery.error?.body?.message
+                || availableQuery.error?.message
+                || 'Failed to load Fantrax leagues.'}
+            </Alert>
+          )}
+
+          {!availableQuery.isLoading && !availableQuery.isError && availableLeagues.length === 0 && (
+            <Typography color="text.secondary" sx={{ py: 1 }}>
+              All of your NFL Fantrax leagues are already imported.
+            </Typography>
+          )}
+
+          {!availableQuery.isLoading && availableLeagues.length > 0 && (
+            <Box
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1.5,
+                overflow: 'hidden',
+                maxHeight: 360,
+                overflowY: 'auto',
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 220px',
+                  px: 2,
+                  py: 1,
+                  bgcolor: 'background.paper',
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  fontWeight: 700,
+                  color: 'text.secondary',
+                  fontSize: '0.8rem',
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 1,
+                }}
+              >
+                <Box>League Name</Box>
+                <Box>League ID</Box>
+              </Box>
+
+              {availableLeagues.map((league) => {
+                const selected = fantraxId === league.league_id
+                return (
+                  <CardActionArea
+                    key={league.league_id}
+                    onClick={() => selectAvailableLeague(league)}
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 220px',
+                      px: 2,
+                      py: 1,
+                      borderBottom: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: selected ? 'rgba(212,165,116,0.08)' : 'transparent',
+                      '&:last-child': { borderBottom: 0 },
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      fontWeight={selected ? 700 : 600}
+                      color={selected ? 'secondary.main' : 'text.primary'}
+                      sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pr: 1 }}
+                    >
+                      {league.league_name}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+                    >
+                      {league.league_id}
+                    </Typography>
+                  </CardActionArea>
+                )
+              })}
+            </Box>
+          )}
+        </Box>
       )}
 
       {mode === 'edit' && (
@@ -320,8 +473,8 @@ export default function LeagueForm({ mode, record, onSaved }) {
       )}
 
       {/* Actions */}
-      <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'flex-end' }}>
-        {mode === 'edit' && (
+      {mode === 'edit' && (
+        <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'flex-end' }}>
           <Button
             variant="outlined"
             color="error"
@@ -331,28 +484,26 @@ export default function LeagueForm({ mode, record, onSaved }) {
           >
             Delete League
           </Button>
-        )}
-        <Button
-          type="submit"
-          variant="contained"
-          startIcon={
-            mutation.isPending ? (
-              <CircularProgress size={18} color="inherit" />
-            ) : mode === 'create' ? (
-              <CloudDownloadIcon />
-            ) : (
-              <SaveIcon />
-            )
-          }
-          disabled={isPending}
-          sx={{
-            bgcolor: 'primary.main',
-            '&:hover': { bgcolor: 'primary.dark' },
-          }}
-        >
-          {mode === 'create' ? 'Import League from Fantrax' : 'Save Changes'}
-        </Button>
-      </Box>
+          <Button
+            type="submit"
+            variant="contained"
+            startIcon={
+              mutation.isPending ? (
+                <CircularProgress size={18} color="inherit" />
+              ) : (
+                <SaveIcon />
+              )
+            }
+            disabled={isPending}
+            sx={{
+              bgcolor: 'primary.main',
+              '&:hover': { bgcolor: 'primary.dark' },
+            }}
+          >
+            Save Changes
+          </Button>
+        </Box>
+      )}
       <ConfirmDialog
         open={deleteOpen}
         title="Delete League"

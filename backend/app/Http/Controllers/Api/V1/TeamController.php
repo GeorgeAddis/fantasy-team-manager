@@ -49,27 +49,45 @@ class TeamController extends Controller
 
     /**
      * Return the roster for a single team, grouped by position.
+     * Always includes every starter slot (player may be null when empty).
      */
     public function roster(Team $team): JsonResponse
     {
         $team->load(['league', 'lineupSlots.player.irlFranchise']);
 
-        $positionOrder = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'WR3', 'TE', 'RWT', 'K', 'DST', 'BN'];
+        $starterOrder = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'WR3', 'TE', 'RWT', 'K', 'DST'];
+        $byPos = $team->lineupSlots->groupBy(fn ($s) => $s->lineup_position->value);
 
-        $slots = $team->lineupSlots
-            ->sortBy(fn ($s) => array_search($s->lineup_position->value, $positionOrder, true))
-            ->values()
-            ->map(fn ($s) => [
-                'lineup_position' => $s->lineup_position->value,
-                'player' => $s->player ? array_merge([
-                    'id'                    => $s->player->id,
-                    'name'                  => $s->player->name,
-                    'positions'             => $s->player->positions ?? [],
-                    'irl_franchise_abbr'    => $s->player->irlFranchise?->abbreviated_name,
-                    'bye_week'              => $s->player->irlFranchise?->bye_week,
-                    'do_not_roster'         => $s->player->do_not_roster,
-                ], RankingFields::valuesFor($s->player, $team->league)) : null,
-            ]);
+        $mapSlot = function ($slot) use ($team) {
+            return [
+                'lineup_position' => $slot->lineup_position->value,
+                'player' => $slot->player ? array_merge([
+                    'id'                    => $slot->player->id,
+                    'name'                  => $slot->player->name,
+                    'positions'             => $slot->player->positions ?? [],
+                    'irl_franchise_abbr'    => $slot->player->irlFranchise?->abbreviated_name,
+                    'bye_week'              => $slot->player->irlFranchise?->bye_week,
+                    'do_not_roster'         => $slot->player->do_not_roster,
+                ], RankingFields::valuesFor($slot->player, $team->league)) : null,
+            ];
+        };
+
+        $slots = [];
+        foreach ($starterOrder as $pos) {
+            $existing = ($byPos[$pos] ?? collect())->first();
+            if ($existing) {
+                $slots[] = $mapSlot($existing);
+            } else {
+                $slots[] = [
+                    'lineup_position' => $pos,
+                    'player' => null,
+                ];
+            }
+        }
+
+        foreach ($byPos['BN'] ?? [] as $slot) {
+            $slots[] = $mapSlot($slot);
+        }
 
         return response()->json(['data' => $slots]);
     }
@@ -82,6 +100,7 @@ class TeamController extends Controller
     {
         $teams = Team::query()
             ->with(['league', 'lineupSlots.player'])
+            ->whereHas('league', fn ($q) => $q->where('bestball', false))
             ->orderBy('league_id')
             ->orderBy('name')
             ->get();
@@ -110,6 +129,7 @@ class TeamController extends Controller
     {
         $myTeams = Team::query()
             ->where('my_team', true)
+            ->whereHas('league', fn ($q) => $q->where('bestball', false))
             ->with(['league.teams', 'lineupSlots.player'])
             ->orderBy('league_id')
             ->orderBy('name')
@@ -178,6 +198,7 @@ class TeamController extends Controller
     {
         $myTeams = Team::query()
             ->where('my_team', true)
+            ->whereHas('league', fn ($q) => $q->where('bestball', false))
             ->with(['league.teams', 'lineupSlots.player.irlFranchise'])
             ->orderBy('league_id')
             ->orderBy('name')

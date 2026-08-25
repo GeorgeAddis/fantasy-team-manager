@@ -23,6 +23,11 @@ export function importFantraxLeague(body) {
   return apiFetch(`${path}/import-fantrax`, { method: 'POST', body })
 }
 
+/** @returns {Promise<{ data: object[] }>} */
+export function listFantraxAvailable() {
+  return apiFetch(`${path}/fantrax-available`)
+}
+
 /** @returns {Promise<object>} */
 export function updateLeague(id, body) {
   return apiFetch(`${path}/${id}`, { method: 'PATCH', body })
@@ -71,8 +76,9 @@ export function updateRosters(leagueId) {
 }
 
 /** @returns {Promise<object>} */
-export function updateAllRosters() {
+export function updateAllRosters({ bestball = false } = {}) {
   return apiFetch(`${path}/update-all-rosters`, {
     method: 'POST',
+    body: { bestball },
   })
 }

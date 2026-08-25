@@ -4,6 +4,7 @@ export const queryKeys = {
     all: ['leagues'],
     list: (params) => ['leagues', 'list', params],
     detail: (id) => ['leagues', 'detail', id],
+    fantraxAvailable: ['leagues', 'fantraxAvailable'],
   },
   teams: {
     all: ['teams'],
@@ -22,7 +23,7 @@ export const queryKeys = {
     detail: (id) => ['players', 'detail', id],
     stats: ['players', 'stats'],
     searchMyTeams: (params) => ['players', 'searchMyTeams', params],
-    exposure: ['players', 'exposure'],
+    exposure: (params = {}) => ['players', 'exposure', params],
     doNotRoster: ['players', 'doNotRoster'],
     doNotRosterTeams: ['players', 'doNotRosterTeams'],
   },

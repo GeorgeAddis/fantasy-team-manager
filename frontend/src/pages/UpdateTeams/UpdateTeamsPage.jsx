@@ -37,16 +37,26 @@ export default function UpdateTeamsPage() {
   const rosterMutation = useUpdateRosters()
   const updateAllRostersMutation = useUpdateAllRosters()
   const [updateAllOpen, setUpdateAllOpen] = useState(false)
+  const [updateAllMode, setUpdateAllMode] = useState('standard') // 'standard' | 'bestball'
   const [rosterTarget, setRosterTarget] = useState(null)
 
+  const standardLeagues = useMemo(
+    () => leagues.filter((l) => !l.bestball),
+    [leagues],
+  )
+  const bestballLeagues = useMemo(
+    () => leagues.filter((l) => l.bestball),
+    [leagues],
+  )
+
   const sorted = useMemo(() => {
-    return [...leagues].sort((a, b) => {
+    return [...standardLeagues].sort((a, b) => {
       if (!a.teams_updated_at && !b.teams_updated_at) return 0
       if (!a.teams_updated_at) return -1
       if (!b.teams_updated_at) return 1
       return new Date(a.teams_updated_at) - new Date(b.teams_updated_at)
     })
-  }, [leagues])
+  }, [standardLeagues])
 
   function handleUpdate(league) {
     setUpdateTarget(league)
@@ -65,6 +75,15 @@ export default function UpdateTeamsPage() {
     setUpdateAllOpen(false)
     updateAllRostersMutation.reset()
   }
+
+  function startUpdateAll(bestball) {
+    setUpdateAllMode(bestball ? 'bestball' : 'standard')
+    setUpdateAllOpen(true)
+    updateAllRostersMutation.reset()
+    updateAllRostersMutation.mutate({ bestball })
+  }
+
+  const bulkBusy = updateAllRostersMutation.isPending || rosterMutation.isPending
 
   return (
     <Box
@@ -89,33 +108,51 @@ export default function UpdateTeamsPage() {
         <Typography variant="h5" color="secondary.main">
           Update Teams
         </Typography>
-        {sorted.length > 0 && (
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={
-              updateAllRostersMutation.isPending
-                ? <CircularProgress size={16} color="inherit" />
-                : <SyncIcon />
-            }
-            disabled={updateAllRostersMutation.isPending || rosterMutation.isPending}
-            onClick={() => {
-              setUpdateAllOpen(true)
-              updateAllRostersMutation.reset()
-              updateAllRostersMutation.mutate()
-            }}
-            sx={{
-              textTransform: 'none',
-              bgcolor: 'primary.main',
-              '&:hover': { bgcolor: 'primary.dark' },
-            }}
-          >
-            Update All
-          </Button>
-        )}
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {(sorted.length > 0 || bestballLeagues.length > 0) && (
+            <>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={
+                  updateAllRostersMutation.isPending && updateAllMode === 'standard'
+                    ? <CircularProgress size={16} color="inherit" />
+                    : <SyncIcon />
+                }
+                disabled={bulkBusy || sorted.length === 0}
+                onClick={() => startUpdateAll(false)}
+                sx={{
+                  textTransform: 'none',
+                  bgcolor: 'primary.main',
+                  '&:hover': { bgcolor: 'primary.dark' },
+                }}
+              >
+                Update All
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={
+                  updateAllRostersMutation.isPending && updateAllMode === 'bestball'
+                    ? <CircularProgress size={16} color="inherit" />
+                    : <SyncIcon />
+                }
+                disabled={bulkBusy || bestballLeagues.length === 0}
+                onClick={() => startUpdateAll(true)}
+                sx={{
+                  textTransform: 'none',
+                  bgcolor: 'primary.main',
+                  '&:hover': { bgcolor: 'primary.dark' },
+                }}
+              >
+                Update Bestball
+              </Button>
+            </>
+          )}
+        </Box>
       </Box>
       <Typography color="text.secondary" sx={{ mb: 3, textAlign: 'center', width: '100%', maxWidth: 800 }}>
-        Sync rosters from Fantrax for each of your leagues.
+        Sync rosters from Fantrax for your standard (non-bestball) leagues.
       </Typography>
 
       {leagueQuery.isLoading && <CircularProgress sx={{ mt: 4 }} />}
@@ -238,7 +275,7 @@ export default function UpdateTeamsPage() {
       <RosterUpdateResultDialog
         open={updateAllOpen}
         onClose={closeUpdateAllResult}
-        title="Update All Rosters"
+        title={updateAllMode === 'bestball' ? 'Update All Bestball Rosters' : 'Update All Rosters'}
         isPending={updateAllRostersMutation.isPending}
         result={updateAllRostersMutation.data}
         error={updateAllRostersMutation.error}

@@ -83,8 +83,9 @@ class PlayerController extends Controller
             return response()->json(['results' => []]);
         }
 
-        // Get all "my team" IDs
+        // Get all "my team" IDs (standard leagues only — manage teams excludes bestball)
         $myTeams = \App\Models\Team::where('my_team', true)
+            ->whereHas('league', fn ($q) => $q->where('bestball', false))
             ->with('league')
             ->get();
 
@@ -1231,14 +1232,40 @@ class PlayerController extends Controller
     }
 
     /**
-     * Players rostered on any of "my teams", with exposure counts across all my teams.
-     * PPR and non-PPR leagues are grouped together.
+     * Players rostered on "my teams", with exposure counts.
+     * Query bestball: omit/all = every league; 1/true = bestball only; 0/false = standard only.
      */
-    public function exposure(): JsonResponse
+    public function exposure(Request $request): JsonResponse
     {
-        $myTeams = \App\Models\Team::where('my_team', true)->get();
+        $bestballFilter = $request->query('bestball');
+
+        $myTeamsQuery = \App\Models\Team::query()
+            ->where('my_team', true)
+            ->with('league');
+
+        if ($bestballFilter !== null && $bestballFilter !== '' && strtolower((string) $bestballFilter) !== 'all') {
+            $wantBestball = filter_var($bestballFilter, FILTER_VALIDATE_BOOLEAN);
+            $myTeamsQuery->whereHas('league', fn ($q) => $q->where('bestball', $wantBestball));
+        }
+
+        $myTeams = $myTeamsQuery->get();
         $totalTeams = $myTeams->count();
         $teamIds = $myTeams->pluck('id')->all();
+
+        // Standard (non-bestball) teams — used for kicker % in the "all leagues" view.
+        $isAllLeaguesView = $bestballFilter === null
+            || $bestballFilter === ''
+            || strtolower((string) $bestballFilter) === 'all';
+        $standardTeamIdSet = [];
+        $totalStandardTeams = 0;
+        if ($isAllLeaguesView) {
+            $standardTeamIdSet = $myTeams
+                ->filter(fn ($t) => !($t->league?->bestball ?? false))
+                ->pluck('id')
+                ->flip()
+                ->all();
+            $totalStandardTeams = count($standardTeamIdSet);
+        }
 
         if ($totalTeams === 0) {
             return response()->json([
@@ -1277,11 +1304,23 @@ class PlayerController extends Controller
         }
 
         $data = collect($byPlayer)
-            ->map(function (array $row) use ($totalTeams) {
-                $teamCount = count($row['team_ids']);
+            ->map(function (array $row) use ($totalTeams, $isAllLeaguesView, $standardTeamIdSet, $totalStandardTeams) {
+                $isKicker = in_array('K', $row['positions'] ?? [], true);
+
+                // Kickers aren't used in bestball — in the all-leagues view, count only
+                // standard teams so exposure % isn't diluted by bestball leagues.
+                if ($isAllLeaguesView && $isKicker) {
+                    $standardIds = array_intersect_key($row['team_ids'], $standardTeamIdSet);
+                    $teamCount = count($standardIds);
+                    $denom = $totalStandardTeams > 0 ? $totalStandardTeams : $totalTeams;
+                } else {
+                    $teamCount = count($row['team_ids']);
+                    $denom = $totalTeams;
+                }
+
                 unset($row['team_ids']);
                 $row['team_count'] = $teamCount;
-                $row['exposure_pct'] = round(($teamCount / $totalTeams) * 100, 1);
+                $row['exposure_pct'] = $denom > 0 ? round(($teamCount / $denom) * 100, 1) : 0;
 
                 return $row;
             })
@@ -1309,6 +1348,7 @@ class PlayerController extends Controller
         }
 
         $myTeams = \App\Models\Team::where('my_team', true)
+            ->whereHas('league', fn ($q) => $q->where('bestball', false))
             ->with('league')
             ->get();
 

@@ -114,8 +114,9 @@ export default function ManageTeamsPage() {
       rosterAddMap[entry.id] = entry
     }
 
-    // One row per league that has a "my team"
+    // One row per non-bestball league that has a "my team"
     return leagues
+      .filter((league) => !league.bestball)
       .map((league) => {
         const myTeam = league.teams?.find((t) => t.my_team) ?? null
         if (!myTeam) return null
@@ -346,7 +347,9 @@ export default function ManageTeamsPage() {
           </>
         ) : (
           <>
-            <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary', fontSize: '0.8rem' }}>Empty</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main', fontSize: '0.8rem' }}>
+              EMPTY SLOT
+            </Typography>
             <Typography variant="caption" />
             <Typography variant="caption" />
             <Typography variant="caption" />
@@ -922,7 +925,7 @@ export default function ManageTeamsPage() {
               onClick={() => {
                 setUpdateAllOpen(true)
                 updateAllRostersMutation.reset()
-                updateAllRostersMutation.mutate()
+                updateAllRostersMutation.mutate({ bestball: false })
               }}
               sx={{ textTransform: 'none' }}
             >

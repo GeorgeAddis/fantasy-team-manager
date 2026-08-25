@@ -96,8 +96,11 @@ function SlotRow({ slot }) {
           )}
         </Box>
       ) : (
-        <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
-          Empty
+        <Typography
+          variant="body2"
+          sx={{ fontWeight: 600, color: 'error.main', whiteSpace: 'nowrap' }}
+        >
+          EMPTY SLOT
         </Typography>
       )}
     </Box>
@@ -108,8 +111,12 @@ export default function RosterDialog({ open, onClose, teamId, teamName, leagueNa
   const { data, isLoading } = useTeamRoster(teamId, { enabled: open && teamId != null })
   const slots = data?.data ?? []
 
-  const starters = slots.filter((s) => STARTER_POSITIONS.includes(s.lineup_position))
+  const starters = STARTER_POSITIONS.map((pos) =>
+    slots.find((s) => s.lineup_position === pos) ?? { lineup_position: pos, player: null },
+  )
   const bench = slots.filter((s) => s.lineup_position === 'BN')
+
+  const hasAnyPlayer = slots.some((s) => s.player != null)
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
@@ -141,7 +148,7 @@ export default function RosterDialog({ open, onClose, teamId, teamName, leagueNa
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
             <CircularProgress size={28} />
           </Box>
-        ) : slots.length === 0 ? (
+        ) : !hasAnyPlayer && bench.length === 0 ? (
           <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
             No roster data available.
           </Typography>
