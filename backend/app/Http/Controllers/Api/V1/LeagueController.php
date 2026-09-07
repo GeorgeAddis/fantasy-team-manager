@@ -11,6 +11,7 @@ use App\Models\League;
 use App\Models\LineupSlot;
 use App\Models\Player;
 use App\Models\Team;
+use App\Support\FantraxLeagueStatusSync;
 use App\Support\RankingFields;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -467,6 +468,8 @@ class LeagueController extends Controller
 
             $league->update(['teams_updated_at' => now()]);
         });
+
+        $results['player_statuses_synced'] = FantraxLeagueStatusSync::sync($league);
 
         return $results;
     }

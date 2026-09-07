@@ -7,11 +7,22 @@ import {
   Typography,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
+import ListAltIcon from '@mui/icons-material/ListAlt'
 import { useSearchMyTeams } from '@/hooks/usePlayers'
+import RosterDialog from '@/components/RosterDialog'
 
 const LINEUP_LABEL = {
-  QB: 'QB', RB1: 'RB', RB2: 'RB', WR1: 'WR', WR2: 'WR', WR3: 'WR',
-  TE: 'TE', RWT: 'FLEX', K: 'K', DST: 'DST', BN: 'BN',
+  QB: 'QB',
+  RB1: 'RB1',
+  RB2: 'RB2',
+  WR1: 'WR1',
+  WR2: 'WR2',
+  WR3: 'WR3',
+  TE: 'TE',
+  RWT: 'FLEX',
+  K: 'K',
+  DST: 'DST',
+  BN: 'BN',
 }
 
 const HEADER_SX = {
@@ -27,13 +38,36 @@ const CELL_SX = {
   whiteSpace: 'nowrap',
 }
 
-function ResultsTable({ results, type }) {
+function ViewRosterButton({ row, onViewRoster }) {
+  if (!row.team_id) return null
+  return (
+    <Button
+      size="small"
+      variant="contained"
+      startIcon={<ListAltIcon />}
+      onClick={() => onViewRoster?.({
+        teamId: row.team_id,
+        teamName: row.team_name,
+        leagueName: row.league_name,
+      })}
+      sx={{
+        textTransform: 'none',
+        bgcolor: 'primary.main',
+        '&:hover': { bgcolor: 'primary.dark' },
+      }}
+    >
+      View Roster
+    </Button>
+  )
+}
+
+function ResultsTable({ results, type, onViewRoster }) {
   if (!results || results.length === 0) return null
 
   const isPlayer = type === 'player'
   const gridCols = isPlayer
-    ? '1fr 140px 100px'
-    : '1fr 60px 100px 140px 100px'
+    ? '1fr 140px 80px 130px'
+    : '1fr 60px 80px 140px 100px 130px'
 
   return (
     <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, overflow: 'hidden' }}>
@@ -53,6 +87,7 @@ function ResultsTable({ results, type }) {
             <Typography sx={HEADER_SX}>League</Typography>
             <Typography sx={HEADER_SX}>Team</Typography>
             <Typography sx={HEADER_SX}>Slot</Typography>
+            <Typography sx={HEADER_SX}>Roster</Typography>
           </>
         ) : (
           <>
@@ -61,6 +96,7 @@ function ResultsTable({ results, type }) {
             <Typography sx={HEADER_SX}>Slot</Typography>
             <Typography sx={HEADER_SX}>Team</Typography>
             <Typography sx={HEADER_SX}>League</Typography>
+            <Typography sx={HEADER_SX}>Roster</Typography>
           </>
         )}
       </Box>
@@ -76,6 +112,7 @@ function ResultsTable({ results, type }) {
               py: 0.5,
               borderBottom: '1px solid',
               borderColor: 'divider',
+              alignItems: 'center',
               bgcolor: row.lineup_position === 'BN'
                 ? 'transparent'
                 : 'rgba(212,165,116,0.08)',
@@ -92,6 +129,9 @@ function ResultsTable({ results, type }) {
                 <Typography variant="body2" sx={{ ...CELL_SX, fontWeight: 600, color: 'secondary.main' }}>
                   {LINEUP_LABEL[row.lineup_position] ?? row.lineup_position}
                 </Typography>
+                <Box>
+                  <ViewRosterButton row={row} onViewRoster={onViewRoster} />
+                </Box>
               </>
             ) : (
               <>
@@ -110,6 +150,9 @@ function ResultsTable({ results, type }) {
                 <Typography variant="body2" sx={CELL_SX}>
                   {row.league_name}
                 </Typography>
+                <Box>
+                  <ViewRosterButton row={row} onViewRoster={onViewRoster} />
+                </Box>
               </>
             )}
           </Box>
@@ -122,6 +165,7 @@ function ResultsTable({ results, type }) {
 export default function SearchRosterPanel({ type }) {
   const [input, setInput] = useState('')
   const [search, setSearch] = useState('')
+  const [rosterTarget, setRosterTarget] = useState(null)
 
   const { data, isLoading } = useSearchMyTeams(
     search ? { search, type } : {},
@@ -206,7 +250,7 @@ export default function SearchRosterPanel({ type }) {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   Found on {new Set(results.map((r) => r.league_name)).size} league{new Set(results.map((r) => r.league_name)).size === 1 ? '' : 's'}
                 </Typography>
-                <ResultsTable results={results} type={type} />
+                <ResultsTable results={results} type={type} onViewRoster={setRosterTarget} />
               </>
             )}
           </Box>
@@ -225,7 +269,7 @@ export default function SearchRosterPanel({ type }) {
                 <Box
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: '1fr',
+                    gridTemplateColumns: '1fr 140px 130px',
                     px: 1.5,
                     py: 0.75,
                     bgcolor: 'background.paper',
@@ -234,21 +278,32 @@ export default function SearchRosterPanel({ type }) {
                   }}
                 >
                   <Typography sx={HEADER_SX}>League</Typography>
+                  <Typography sx={HEADER_SX}>Team</Typography>
+                  <Typography sx={HEADER_SX}>Roster</Typography>
                 </Box>
                 <Box sx={{ maxHeight: 520, overflowY: 'auto' }}>
                   {availableLeagues.map((l) => (
                     <Box
                       key={l.league_id}
                       sx={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 140px 130px',
                         px: 1.5,
                         py: 0.5,
                         borderBottom: '1px solid',
                         borderColor: 'divider',
+                        alignItems: 'center',
                       }}
                     >
                       <Typography variant="body2" sx={CELL_SX}>
                         {l.league_name}
                       </Typography>
+                      <Typography variant="body2" sx={{ ...CELL_SX, color: 'text.secondary' }}>
+                        {l.team_name}
+                      </Typography>
+                      <Box>
+                        <ViewRosterButton row={l} onViewRoster={setRosterTarget} />
+                      </Box>
                     </Box>
                   ))}
                 </Box>
@@ -264,9 +319,17 @@ export default function SearchRosterPanel({ type }) {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
             Found on {new Set(results.map((r) => r.league_name)).size} league{new Set(results.map((r) => r.league_name)).size === 1 ? '' : 's'} ({results.length} slot{results.length === 1 ? '' : 's'})
           </Typography>
-          <ResultsTable results={results} type={type} />
+          <ResultsTable results={results} type={type} onViewRoster={setRosterTarget} />
         </>
       )}
+
+      <RosterDialog
+        open={Boolean(rosterTarget)}
+        onClose={() => setRosterTarget(null)}
+        teamId={rosterTarget?.teamId}
+        teamName={rosterTarget?.teamName}
+        leagueName={rosterTarget?.leagueName}
+      />
     </Box>
   )
 }

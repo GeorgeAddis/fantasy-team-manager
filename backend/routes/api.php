@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\DefenseWeekRankController;
 use App\Http\Controllers\Api\V1\GlobalSettingController;
 use App\Http\Controllers\Api\V1\IrlFranchiseController;
 use App\Http\Controllers\Api\V1\LeagueController;
@@ -27,9 +28,13 @@ Route::prefix('v1')->group(function () {
     Route::get('teams/lineup-analysis', [TeamController::class, 'lineupAnalysis']);
     Route::get('teams/roster-add-analysis', [TeamController::class, 'rosterAddAnalysis']);
     Route::get('teams/pre-season-optimise-analysis', [TeamController::class, 'preSeasonOptimiseAnalysis']);
+    Route::get('teams/free-agent-alerts', [TeamController::class, 'freeAgentAlerts']);
     Route::get('teams/{team}/roster', [TeamController::class, 'roster']);
     Route::apiResource('teams', TeamController::class);
     Route::apiResource('irl-franchises', IrlFranchiseController::class);
+    Route::get('defense-week-ranks/management', [DefenseWeekRankController::class, 'management']);
+    Route::get('defense-week-ranks', [DefenseWeekRankController::class, 'index']);
+    Route::put('defense-week-ranks', [DefenseWeekRankController::class, 'update']);
     Route::get('players/do-not-roster', [PlayerController::class, 'doNotRosterList']);
     Route::post('players/do-not-roster', [PlayerController::class, 'doNotRosterAdd']);
     Route::delete('players/{player}/do-not-roster', [PlayerController::class, 'doNotRosterRemove']);

@@ -43,10 +43,11 @@ export function useTeamLineupAnalysis() {
   })
 }
 
-export function useTeamRosterAddAnalysis() {
+export function useTeamRosterAddAnalysis(params = {}, options = {}) {
   return useQuery({
-    queryKey: [...queryKeys.teams.all, 'roster-add-analysis'],
-    queryFn: () => teamsApi.getTeamRosterAddAnalysis(),
+    queryKey: [...queryKeys.teams.all, 'roster-add-analysis', params],
+    queryFn: () => teamsApi.getTeamRosterAddAnalysis(params),
+    enabled: options.enabled !== false,
   })
 }
 
@@ -54,6 +55,14 @@ export function useTeamPreSeasonOptimiseAnalysis() {
   return useQuery({
     queryKey: [...queryKeys.teams.all, 'pre-season-optimise-analysis'],
     queryFn: () => teamsApi.getTeamPreSeasonOptimiseAnalysis(),
+  })
+}
+
+export function useTeamFreeAgentAlerts(options = {}) {
+  return useQuery({
+    queryKey: [...queryKeys.teams.all, 'free-agent-alerts'],
+    queryFn: () => teamsApi.getTeamFreeAgentAlerts(),
+    enabled: options.enabled !== false,
   })
 }
 

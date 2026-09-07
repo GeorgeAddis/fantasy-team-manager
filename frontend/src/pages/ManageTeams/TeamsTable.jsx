@@ -230,7 +230,7 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map(({ league, myTeam, analysis, rosterAdd }) => (
+            {rows.map(({ league, myTeam, analysis, rosterAdd, thursdayRosterAdd }) => (
               <TableRow key={league.id} sx={{ '&:last-child td': { borderBottom: 0 }, verticalAlign: 'top' }}>
                 <TableCell>
                   <Typography variant="body2" fontWeight={600} sx={{ pt: (isLineupChange || isRosterMoves || isRosterOpt || isThursdayUpdate) ? 0.5 : 0 }}>
@@ -305,7 +305,7 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
                       size="small"
                       variant="contained"
                       startIcon={<SyncIcon />}
-                      onClick={() => onThursdayUpdate?.({ league, myTeam, analysis, rosterAdd })}
+                      onClick={() => onThursdayUpdate?.({ league, myTeam, analysis, rosterAdd: thursdayRosterAdd ?? rosterAdd })}
                       sx={{
                         textTransform: 'none',
                         bgcolor: 'primary.main',

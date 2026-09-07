@@ -121,6 +121,13 @@ function displayBoardName(player) {
   return label ? `${player.name} (${label})` : player.name
 }
 
+function boardStatusLabel(player) {
+  if (player._mine) return ''
+  return player.status === 'WW' ? 'W' : 'FA'
+}
+
+const BOARD_GRID = '1fr 40px 55px 35px 48px'
+
 /**
  * Merge my players + free agents for the selected positions, sorted by season rank.
  * Keeps all of my players at those positions (unranked mine sink to the bottom),
@@ -182,10 +189,15 @@ function computeSuggestedAdds(myPlayers, freeAgents, positionsSet) {
   const singlePosition = positionsSet.size === 1
   const useKey = singlePosition ? 'season_position_rank' : 'season_rank'
 
-  const eligible = (p) => hasPosition(p, positionsSet) && p[useKey] != null
+  const hasRank = (p) => {
+    const rank = p[useKey]
+    return rank != null && rank > 0 && rank < 999
+  }
+  const eligibleMine = (p) => hasPosition(p, positionsSet) && p[useKey] != null
+  const eligibleFa = (p) => hasPosition(p, positionsSet) && hasRank(p)
 
-  const mySorted = myPlayers.filter(eligible).slice().sort((a, b) => a[useKey] - b[useKey])
-  const faSorted = freeAgents.filter(eligible).slice().sort((a, b) => a[useKey] - b[useKey])
+  const mySorted = myPlayers.filter(eligibleMine).slice().sort((a, b) => a[useKey] - b[useKey])
+  const faSorted = freeAgents.filter(eligibleFa).slice().sort((a, b) => a[useKey] - b[useKey])
 
   const suggestions = []
   let myIdx = mySorted.length - 1
@@ -497,7 +509,7 @@ export default function PreSeasonOptimisePanel() {
                 <Box
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: '1fr 40px 55px 35px',
+                    gridTemplateColumns: BOARD_GRID,
                     gap: 0.5,
                     px: 1.5,
                     py: 0.75,
@@ -510,6 +522,7 @@ export default function PreSeasonOptimisePanel() {
                   <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>SZN</Typography>
                   <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>SPos</Typography>
                   <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Bye</Typography>
+                  <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Status</Typography>
                 </Box>
 
                 <Box sx={{ maxHeight: 520, overflowY: 'auto' }}>
@@ -522,7 +535,7 @@ export default function PreSeasonOptimisePanel() {
                         key={`${row._mine ? 'mine' : 'fa'}-${row.id}`}
                         sx={{
                           display: 'grid',
-                          gridTemplateColumns: '1fr 40px 55px 35px',
+                          gridTemplateColumns: BOARD_GRID,
                           gap: 0.5,
                           px: 1.5,
                           py: 0.5,
@@ -545,6 +558,17 @@ export default function PreSeasonOptimisePanel() {
                         </Typography>
                         <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', textAlign: 'right' }}>
                           {row.bye_week ?? '—'}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            fontFamily: 'monospace',
+                            textAlign: 'right',
+                            fontWeight: 700,
+                            color: row.status === 'WW' ? 'warning.main' : 'text.primary',
+                          }}
+                        >
+                          {boardStatusLabel(row)}
                         </Typography>
                       </Box>
                     )

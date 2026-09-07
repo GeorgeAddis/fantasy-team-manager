@@ -17,6 +17,10 @@ export const queryKeys = {
     list: (params) => ['irl-franchises', 'list', params],
     detail: (id) => ['irl-franchises', 'detail', id],
   },
+  defenseWeekRanks: {
+    all: ['defense-week-ranks'],
+    list: (week) => ['defense-week-ranks', 'list', week],
+  },
   players: {
     all: ['players'],
     list: (params) => ['players', 'list', params],

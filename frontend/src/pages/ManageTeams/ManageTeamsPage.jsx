@@ -19,10 +19,12 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import TuneIcon from '@mui/icons-material/Tune'
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
 import SyncIcon from '@mui/icons-material/Sync'
 
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import BlockIcon from '@mui/icons-material/Block'
+import ShieldIcon from '@mui/icons-material/Shield'
 import ErrorIcon from '@mui/icons-material/Error'
 import { useLeagueList, useFlagWaiverClaims, useFlagRosterMoves, useFlagRosterOptimisation, useFlagThursdayUpdate, useUpdateLeague, useUpdateAllRosters } from '@/hooks/useLeagues'
 import { useTeamLineupAnalysis, useTeamRosterAddAnalysis, useTeamRoster } from '@/hooks/useTeams'
@@ -37,6 +39,8 @@ import SeasonRankingsExpanded from './SeasonRankingsExpanded'
 import HomePanel from './HomePanel'
 import SearchRosterPanel from './SearchRosterPanel'
 import DoNotRosterPanel from './DoNotRosterPanel'
+import DefenseManagementPanel from './DefenseManagementPanel'
+import FreeAgentAlertsPanel from './FreeAgentAlertsPanel'
 import PreSeasonOptimisePanel from './PreSeasonOptimisePanel'
 
 const POSITION_COLORS = {
@@ -55,12 +59,14 @@ const POSITION_COLORS = {
 const FILTERS = [
   { value: 'home', label: 'Home', icon: HomeIcon },
   { value: 'all', label: 'All Teams', icon: GroupsIcon },
+  { value: 'free-agent-alerts', label: 'Free Agent Alerts', icon: NotificationsActiveIcon },
   { value: 'pre-season-optimise', label: 'Pre Season Optimise', icon: AutoFixHighIcon },
   { value: 'require-lineup-change', label: 'Require Lineup Change', icon: SyncAltIcon },
   { value: 'require-roster-moves', label: 'Require Roster Moves', icon: PersonAddIcon },
   { value: 'roster-optimisation', label: 'Roster Optimisation', icon: TuneIcon },
   { value: 'thursday-update', label: 'Thursday Team Updates', icon: CalendarTodayIcon },
   { value: 'require-waiver-claims', label: 'Require Waiver Claims', icon: SyncAltIcon },
+  { value: 'defense-management', label: 'Defense Management', icon: ShieldIcon },
   { value: 'do-not-roster', label: 'Do Not Roster', icon: BlockIcon },
   { value: 'search-player', label: 'Search for Player', icon: PersonSearchIcon },
   { value: 'search-franchise', label: 'Search for Franchise', icon: PersonSearchIcon },
@@ -79,6 +85,10 @@ export default function ManageTeamsPage() {
   const { data: leagueData, isLoading: leaguesLoading } = useLeagueList()
   const { data: analysisData, isLoading: analysisLoading } = useTeamLineupAnalysis()
   const { data: rosterAddData, isLoading: rosterAddLoading } = useTeamRosterAddAnalysis()
+  const { data: thursdayRosterAddData, isLoading: thursdayRosterAddLoading } = useTeamRosterAddAnalysis(
+    { availability: 'FA' },
+    { enabled: filter === 'thursday-update' },
+  )
   const { data: settingsData } = useSettings()
   const flagMutation = useFlagWaiverClaims()
   const flagRosterMovesMutation = useFlagRosterMoves()
@@ -96,11 +106,13 @@ export default function ManageTeamsPage() {
   const currentWeek = parseInt(settingsData?.data?.current_week ?? '0', 10)
 
   const isLoading = leaguesLoading || analysisLoading || rosterAddLoading
+    || (filter === 'thursday-update' && thursdayRosterAddLoading)
 
   const rows = useMemo(() => {
     const leagues = leagueData?.data ?? []
     const analysisList = analysisData?.data ?? []
     const rosterAddList = rosterAddData?.data ?? []
+    const thursdayRosterAddList = thursdayRosterAddData?.data ?? []
 
     // Build lookup: team_id → analysis entry
     const analysisMap = {}
@@ -114,6 +126,11 @@ export default function ManageTeamsPage() {
       rosterAddMap[entry.id] = entry
     }
 
+    const thursdayRosterAddMap = {}
+    for (const entry of thursdayRosterAddList) {
+      thursdayRosterAddMap[entry.id] = entry
+    }
+
     // One row per non-bestball league that has a "my team"
     return leagues
       .filter((league) => !league.bestball)
@@ -125,10 +142,11 @@ export default function ManageTeamsPage() {
           myTeam,
           analysis: analysisMap[myTeam.id] ?? null,
           rosterAdd: rosterAddMap[myTeam.id] ?? null,
+          thursdayRosterAdd: thursdayRosterAddMap[myTeam.id] ?? null,
         }
       })
       .filter(Boolean)
-  }, [leagueData, analysisData, rosterAddData])
+  }, [leagueData, analysisData, rosterAddData, thursdayRosterAddData])
 
   const filteredRows = useMemo(() => {
     if (filter === 'require-lineup-change') {
@@ -146,7 +164,7 @@ export default function ManageTeamsPage() {
     if (filter === 'thursday-update') {
       return rows.filter((r) => r.league.requires_thursday_update === true)
     }
-    if (filter === 'home' || filter === 'search-player' || filter === 'search-franchise' || filter === 'do-not-roster' || filter === 'pre-season-optimise') return []
+    if (filter === 'home' || filter === 'search-player' || filter === 'search-franchise' || filter === 'do-not-roster' || filter === 'defense-management' || filter === 'pre-season-optimise' || filter === 'free-agent-alerts') return []
     return rows
   }, [rows, filter])
 
@@ -427,6 +445,10 @@ export default function ManageTeamsPage() {
       return <HomePanel />
     }
 
+    if (filter === 'free-agent-alerts') {
+      return <FreeAgentAlertsPanel />
+    }
+
     if (filter === 'pre-season-optimise') {
       return <PreSeasonOptimisePanel />
     }
@@ -437,6 +459,10 @@ export default function ManageTeamsPage() {
 
     if (filter === 'search-franchise') {
       return <SearchRosterPanel key="franchise" type="franchise" />
+    }
+
+    if (filter === 'defense-management') {
+      return <DefenseManagementPanel />
     }
 
     if (filter === 'do-not-roster') {

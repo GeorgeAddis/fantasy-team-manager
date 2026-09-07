@@ -6,6 +6,7 @@ export { apiFetch, ApiError, API_ROOT } from './client'
 export * as leaguesApi from './leagues'
 export * as teamsApi from './teams'
 export * as irlFranchisesApi from './irlFranchises'
+export * as defenseWeekRanksApi from './defenseWeekRanks'
 export * as playersApi from './players'
 export * as lineupSlotsApi from './lineupSlots'
 

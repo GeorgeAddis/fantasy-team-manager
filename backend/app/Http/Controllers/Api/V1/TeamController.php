@@ -6,11 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\TeamStoreRequest;
 use App\Http\Requests\Api\V1\TeamUpdateRequest;
 use App\Http\Resources\TeamResource;
+use App\Models\LeaguePlayerStatus;
 use App\Models\LineupSlot;
 use App\Models\Player;
 use App\Models\Team;
+use App\Support\FantraxLeagueStatusSync;
 use App\Support\RankingFields;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 
@@ -85,11 +88,62 @@ class TeamController extends Controller
             }
         }
 
-        foreach ($byPos['BN'] ?? [] as $slot) {
-            $slots[] = $mapSlot($slot);
+        $bench = ($byPos['BN'] ?? collect())
+            ->map(fn ($slot) => $mapSlot($slot))
+            ->sort(function (array $a, array $b) {
+                $posOrder = ['QB' => 0, 'RB' => 1, 'WR' => 2, 'TE' => 3, 'K' => 4, 'DST' => 5];
+                $posA = $this->benchSortPosition($a['player']['positions'] ?? []);
+                $posB = $this->benchSortPosition($b['player']['positions'] ?? []);
+                $posCmp = ($posOrder[$posA] ?? 99) <=> ($posOrder[$posB] ?? 99);
+                if ($posCmp !== 0) {
+                    return $posCmp;
+                }
+
+                $rankA = $this->benchWeekRank($a['player'] ?? [], $posA);
+                $rankB = $this->benchWeekRank($b['player'] ?? [], $posB);
+                $rankCmp = $rankA <=> $rankB;
+                if ($rankCmp !== 0) {
+                    return $rankCmp;
+                }
+
+                return strcasecmp((string) ($a['player']['name'] ?? ''), (string) ($b['player']['name'] ?? ''));
+            })
+            ->values();
+
+        foreach ($bench as $slot) {
+            $slots[] = $slot;
         }
 
         return response()->json(['data' => $slots]);
+    }
+
+    /**
+     * First matching fantasy position for bench sort order.
+     */
+    private function benchSortPosition(array $positions): string
+    {
+        foreach (['QB', 'RB', 'WR', 'TE', 'K', 'DST'] as $pos) {
+            if (in_array($pos, $positions, true)) {
+                return $pos;
+            }
+        }
+
+        return (string) ($positions[0] ?? '');
+    }
+
+    /**
+     * Week rank for bench sort: 1 is best. QB/K/DST use position rank.
+     */
+    private function benchWeekRank(array $player, string $pos): int
+    {
+        $usePosRank = in_array($pos, ['QB', 'K', 'DST'], true);
+        $raw = $usePosRank
+            ? ($player['week_position_rank'] ?? null)
+            : ($player['week_rank'] ?? $player['week_position_rank'] ?? null);
+
+        $rank = is_numeric($raw) ? (int) $raw : 999;
+
+        return ($rank > 0 && $rank < 999) ? $rank : 999;
     }
 
     /**
@@ -125,8 +179,10 @@ class TeamController extends Controller
      * For each "my team", compute optimal lineup including league free agents.
      * Flag teams where a free agent would start.
      */
-    public function rosterAddAnalysis(): JsonResponse
+    public function rosterAddAnalysis(Request $request): JsonResponse
     {
+        $actualFaOnly = strtoupper((string) $request->query('availability', '')) === 'FA';
+
         $myTeams = Team::query()
             ->where('my_team', true)
             ->whereHas('league', fn ($q) => $q->where('bestball', false))
@@ -135,7 +191,20 @@ class TeamController extends Controller
             ->orderBy('name')
             ->get();
 
-        $data = $myTeams->map(function (Team $team) {
+        if ($actualFaOnly) {
+            $leaguesWithStatus = LeaguePlayerStatus::query()
+                ->whereIn('league_id', $myTeams->pluck('league_id')->filter()->unique())
+                ->distinct()
+                ->pluck('league_id')
+                ->flip();
+            foreach ($myTeams->pluck('league')->unique('id') as $league) {
+                if ($league?->fantrax_id && !isset($leaguesWithStatus[$league->id])) {
+                    FantraxLeagueStatusSync::sync($league);
+                }
+            }
+        }
+
+        $data = $myTeams->map(function (Team $team) use ($actualFaOnly) {
             $league = $team->league;
             if (!$league) {
                 return null;
@@ -152,13 +221,21 @@ class TeamController extends Controller
 
             // Free agents with any ranking for this league's scoring format
             $cols = RankingFields::columns($league);
-            $freeAgents = Player::with('irlFranchise')
+            $freeAgentQuery = Player::with('irlFranchise')
                 ->whereNotIn('id', $rosteredIds)
                 ->where(function ($q) use ($cols) {
                     $q->whereNotNull($cols['week_rank'])
                       ->orWhereNotNull($cols['week_position_rank']);
-                })
-                ->get();
+                });
+
+            if ($actualFaOnly) {
+                $freeAgentQuery->whereIn('id', LeaguePlayerStatus::query()
+                    ->where('league_id', $league->id)
+                    ->where('status', 'FA')
+                    ->select('player_id'));
+            }
+
+            $freeAgents = $freeAgentQuery->get();
 
             // My roster players
             $myPlayers = $team->lineupSlots
@@ -219,20 +296,28 @@ class TeamController extends Controller
                 ->toArray();
 
             $cols = RankingFields::columns($league);
+            $statuses = LeaguePlayerStatus::query()
+                ->where('league_id', $league->id)
+                ->pluck('status', 'player_id');
+
             $freeAgents = Player::with('irlFranchise')
                 ->whereNotIn('id', $rosteredIds)
                 ->where(function ($q) use ($cols) {
-                    $q->whereNotNull($cols['season_rank'])
-                      ->orWhereNotNull($cols['season_position_rank']);
+                    $this->constrainToRankedSeason($q, $cols);
                 })
                 ->get()
-                ->map(fn ($p) => array_merge([
-                    'id'                    => $p->id,
-                    'name'                  => $p->name,
-                    'positions'             => $p->positions ?? [],
-                    'irl_franchise_abbr'    => $p->irlFranchise?->abbreviated_name,
-                    'bye_week'              => $p->irlFranchise?->bye_week,
-                ], RankingFields::valuesFor($p, $league)))
+                ->map(function ($p) use ($league, $statuses) {
+                    $status = $statuses[$p->id] ?? 'FA';
+
+                    return array_merge([
+                        'id'                    => $p->id,
+                        'name'                  => $p->name,
+                        'positions'             => $p->positions ?? [],
+                        'irl_franchise_abbr'    => $p->irlFranchise?->abbreviated_name,
+                        'bye_week'              => $p->irlFranchise?->bye_week,
+                        'status'                => $status === 'WW' ? 'WW' : 'FA',
+                    ], RankingFields::valuesFor($p, $league));
+                })
                 ->values();
 
             $myPlayers = $team->lineupSlots
@@ -571,5 +656,91 @@ class TeamController extends Controller
         }
 
         return $changes;
+    }
+
+    /**
+     * Available top-150 season-ranked players on each of my non-bestball teams.
+     * FA and WW both count as available; status is included when known.
+     */
+    public function freeAgentAlerts(): JsonResponse
+    {
+        $myTeams = Team::query()
+            ->where('my_team', true)
+            ->whereHas('league', fn ($q) => $q->where('bestball', false))
+            ->with(['league.teams'])
+            ->get()
+            ->sortBy(fn (Team $team) => mb_strtolower($team->league?->name ?? '').'|'.mb_strtolower($team->name))
+            ->values();
+
+        $data = $myTeams->map(function (Team $team) {
+            $league = $team->league;
+            if (!$league) {
+                return null;
+            }
+
+            $leagueTeamIds = $league->teams->pluck('id')->toArray();
+            $rosteredIds = LineupSlot::whereIn('team_id', $leagueTeamIds)
+                ->whereNotNull('player_id')
+                ->pluck('player_id')
+                ->unique()
+                ->toArray();
+
+            $cols = RankingFields::columns($league);
+            $seasonCol = $cols['season_rank'];
+            $statuses = LeaguePlayerStatus::query()
+                ->where('league_id', $league->id)
+                ->pluck('status', 'player_id');
+
+            $players = Player::with('irlFranchise')
+                ->whereNotIn('id', $rosteredIds)
+                ->where($seasonCol, '>=', 1)
+                ->where($seasonCol, '<=', 150)
+                ->orderBy($seasonCol)
+                ->orderBy('name')
+                ->get()
+                ->map(function (Player $p) use ($league, $statuses) {
+                    $status = $statuses[$p->id] ?? 'FA';
+
+                    return array_merge([
+                        'id' => $p->id,
+                        'name' => $p->name,
+                        'positions' => $p->positions ?? [],
+                        'irl_franchise_abbr' => $p->irlFranchise?->abbreviated_name,
+                        'bye_week' => $p->irlFranchise?->bye_week,
+                        'status' => $status === 'WW' ? 'WW' : 'FA',
+                    ], RankingFields::valuesFor($p, $league));
+                })
+                ->values();
+
+            if ($players->isEmpty()) {
+                return null;
+            }
+
+            return [
+                'team_id' => $team->id,
+                'team_name' => $team->name,
+                'league_id' => $league->id,
+                'league_name' => $league->name,
+                'players' => $players,
+            ];
+        })->filter()->values();
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Keep players with a real season or season-position rank (exclude 999 / empty).
+     */
+    private function constrainToRankedSeason($query, array $cols): void
+    {
+        $query->where(function ($q) use ($cols) {
+            $q->where(function ($inner) use ($cols) {
+                $inner->where($cols['season_rank'], '>', 0)
+                    ->where($cols['season_rank'], '<', 999);
+            })->orWhere(function ($inner) use ($cols) {
+                $inner->where($cols['season_position_rank'], '>', 0)
+                    ->where($cols['season_position_rank'], '<', 999);
+            });
+        });
     }
 }

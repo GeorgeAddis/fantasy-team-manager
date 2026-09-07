@@ -58,4 +58,9 @@ class Player extends Model
     {
         return $this->hasMany(LineupSlot::class);
     }
+
+    public function leagueStatuses(): HasMany
+    {
+        return $this->hasMany(LeaguePlayerStatus::class);
+    }
 }

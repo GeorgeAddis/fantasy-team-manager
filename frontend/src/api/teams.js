@@ -27,12 +27,17 @@ export function getTeamLineupAnalysis() {
   return apiFetch(`${path}/lineup-analysis`)
 }
 
-export function getTeamRosterAddAnalysis() {
-  return apiFetch(`${path}/roster-add-analysis`)
+export function getTeamRosterAddAnalysis(params = {}) {
+  const q = new URLSearchParams(params).toString()
+  return apiFetch(q ? `${path}/roster-add-analysis?${q}` : `${path}/roster-add-analysis`)
 }
 
 export function getTeamPreSeasonOptimiseAnalysis() {
   return apiFetch(`${path}/pre-season-optimise-analysis`)
+}
+
+export function getTeamFreeAgentAlerts() {
+  return apiFetch(`${path}/free-agent-alerts`)
 }
 
 export function getTeamRoster(id) {

@@ -21,4 +21,9 @@ class IrlFranchise extends Model
     {
         return $this->hasMany(Player::class);
     }
+
+    public function defenseWeekRanks(): HasMany
+    {
+        return $this->hasMany(DefenseWeekRank::class);
+    }
 }

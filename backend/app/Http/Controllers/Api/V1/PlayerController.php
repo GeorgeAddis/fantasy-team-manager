@@ -143,6 +143,7 @@ class PlayerController extends Controller
                 'positions'            => $slot->player->positions ?? [],
                 'irl_franchise_abbr'   => $slot->player->irlFranchise?->abbreviated_name,
                 'lineup_position'      => $slot->lineup_position->value,
+                'team_id'              => $team->id ?? null,
                 'team_name'            => $team->name ?? '',
                 'league_name'          => $team->league->name ?? '',
                 'league_id'            => $team->league->id ?? null,
@@ -182,9 +183,12 @@ class PlayerController extends Controller
                     ->exists();
 
                 if (!$isRostered) {
+                    $myTeam = $myTeams->firstWhere('league_id', $league->id);
                     $availableLeagues[] = [
                         'league_id'   => $league->id,
                         'league_name' => $league->name,
+                        'team_id'     => $myTeam?->id,
+                        'team_name'   => $myTeam?->name,
                     ];
                 }
             }
