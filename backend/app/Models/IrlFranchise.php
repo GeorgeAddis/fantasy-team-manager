@@ -26,4 +26,14 @@ class IrlFranchise extends Model
     {
         return $this->hasMany(DefenseWeekRank::class);
     }
+
+    public function homeGames(): HasMany
+    {
+        return $this->hasMany(IrlGame::class, 'home_irl_franchise_id');
+    }
+
+    public function awayGames(): HasMany
+    {
+        return $this->hasMany(IrlGame::class, 'away_irl_franchise_id');
+    }
 }

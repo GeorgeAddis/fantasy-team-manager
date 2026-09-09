@@ -42,6 +42,7 @@ import DoNotRosterPanel from './DoNotRosterPanel'
 import DefenseManagementPanel from './DefenseManagementPanel'
 import FreeAgentAlertsPanel from './FreeAgentAlertsPanel'
 import PreSeasonOptimisePanel from './PreSeasonOptimisePanel'
+import OptimalLineupPanel, { LineupChangesView, WeekRank } from './OptimalLineupPanel'
 
 const POSITION_COLORS = {
   QB: '#e57373',
@@ -97,7 +98,10 @@ export default function ManageTeamsPage() {
   const updateLeagueMutation = useUpdateLeague()
   const updateAllRostersMutation = useUpdateAllRosters()
   const [updateAllOpen, setUpdateAllOpen] = useState(false)
-  const activeRosterId = addsTarget?.myTeam?.id ?? optimiseTarget?.myTeam?.id ?? (thursdayTarget?.step >= 1 ? thursdayTarget?.myTeam?.id : null)
+  const activeRosterId = addsTarget?.myTeam?.id
+    ?? optimiseTarget?.myTeam?.id
+    ?? claimsTarget?.myTeam?.id
+    ?? (thursdayTarget?.step >= 1 ? thursdayTarget?.myTeam?.id : null)
   const { data: rosterPanelData, isLoading: rosterPanelLoading } = useTeamRoster(
     activeRosterId,
     { enabled: activeRosterId != null },
@@ -516,8 +520,10 @@ export default function ManageTeamsPage() {
     if (showThursday) {
       const step = thursdayTarget.step
       const STEP_LABELS = ['Lineup Changes', 'Roster Moves', 'Roster Optimisation']
-      const suggestedChanges = thursdayTarget.analysis?.suggested_changes ?? []
-      const suggestedAdds = thursdayTarget.rosterAdd?.suggested_adds ?? []
+      const liveThursday = rows.find((r) => r.myTeam.id === thursdayTarget.myTeam.id)
+      const thursdayRosterAdd = liveThursday?.thursdayRosterAdd ?? thursdayTarget.rosterAdd
+      const suggestedChanges = (liveThursday?.analysis ?? thursdayTarget.analysis)?.suggested_changes ?? []
+      const suggestedAdds = (thursdayRosterAdd?.suggested_adds ?? []).filter((a) => a.source === 'FA')
 
       return (
         <>
@@ -569,87 +575,25 @@ export default function ManageTeamsPage() {
 
           {/* Step 0: Lineup Changes */}
           {step === 0 && (
-            <>
-              {suggestedChanges.length === 0 ? (
-                <Typography color="text.secondary" sx={{ py: 3 }}>
-                  No lineup changes required — current starting lineup is optimal.
-                </Typography>
-              ) : (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxWidth: 500 }}>
-                  {suggestedChanges.map((c, i) => (
-                    <Box
-                      key={i}
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1.5,
-                        py: 0.75,
-                        px: 1,
-                        borderRadius: 1,
-                        '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' },
-                      }}
-                    >
-                      <Chip
-                        label={c.position}
-                        size="small"
-                        sx={{
-                          width: 52,
-                          height: 24,
-                          fontWeight: 700,
-                          fontSize: '0.7rem',
-                          bgcolor: POSITION_COLORS[c.position] ?? '#616161',
-                          color: '#fff',
-                        }}
-                      />
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: 'error.light',
-                          textDecoration: 'line-through',
-                          flex: 1,
-                          minWidth: 0,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {c.current_player ?? 'Empty'}
-                      </Typography>
-                      <ArrowForwardIcon sx={{ fontSize: 16, color: 'text.secondary', flexShrink: 0 }} />
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: 'success.light',
-                          fontWeight: 600,
-                          flex: 1,
-                          minWidth: 0,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {c.bench_player ?? 'Empty'}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              )}
-            </>
+            <LineupChangesView
+              changes={suggestedChanges}
+              lineup={(liveThursday?.analysis ?? thursdayTarget.analysis)?.optimal_lineup}
+              currentWeek={currentWeek}
+            />
           )}
 
           {/* Step 1: Roster Moves */}
           {step === 1 && (
-            <>
-              {suggestedAdds.length === 0 ? (
-                <Typography color="text.secondary" sx={{ py: 3 }}>
-                  No roster moves required — no free agent upgrades available.
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 3 }}>
+              <Box>
+                <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
+                  Suggested Adds
                 </Typography>
-              ) : (
-                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 3 }}>
-                  <Box>
-                    <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
-                      Suggested Adds
-                    </Typography>
+                {suggestedAdds.length === 0 ? (
+                  <Typography color="text.secondary" sx={{ py: 3 }}>
+                    No roster moves required — no free agent upgrades available.
+                  </Typography>
+                ) : (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                       {suggestedAdds.map((a, i) => (
                         <Box
@@ -691,11 +635,11 @@ export default function ManageTeamsPage() {
                           >
                             {a.current_player ?? 'Empty'}
                           </Typography>
-                          {a.current_week_position_rank != null && (
-                            <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', minWidth: 28, textAlign: 'right', flexShrink: 0 }}>
-                              #{a.current_week_position_rank}
-                            </Typography>
-                          )}
+                          <WeekRank
+                            position={a.position}
+                            weekRank={a.current_week_rank}
+                            weekPosRank={a.current_week_position_rank}
+                          />
                           <ArrowForwardIcon sx={{ fontSize: 16, color: 'text.secondary', flexShrink: 0 }} />
                           <Chip
                             label={a.source}
@@ -724,20 +668,22 @@ export default function ManageTeamsPage() {
                           >
                             {a.player_name}
                           </Typography>
-                          {a.player_week_position_rank != null && (
-                            <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', minWidth: 28, textAlign: 'right', flexShrink: 0 }}>
-                              #{a.player_week_position_rank}
-                            </Typography>
-                          )}
+                          <WeekRank
+                            position={a.position}
+                            weekRank={a.player_week_rank}
+                            weekPosRank={a.player_week_position_rank}
+                          />
                         </Box>
                       ))}
                     </Box>
-                  </Box>
-                  <Box sx={{ width: '1px', bgcolor: 'divider' }} />
-                  {renderRosterPanel()}
-                </Box>
-              )}
-            </>
+                )}
+              </Box>
+              <Box sx={{ width: '1px', bgcolor: 'divider' }} />
+              <OptimalLineupPanel
+                lineup={thursdayRosterAdd?.optimal_lineup}
+                currentWeek={currentWeek}
+              />
+            </Box>
           )}
 
           {/* Step 2: Roster Optimisation */}
@@ -782,7 +728,9 @@ export default function ManageTeamsPage() {
             </Box>
           </Box>
 
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto 1fr', gap: 3 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '2fr auto 1fr auto 1fr auto 1fr', gap: 3 }}>
+            {renderRosterPanel()}
+            <Box sx={{ width: '1px', bgcolor: 'divider' }} />
             <SeasonRankingsColumn leagueId={claimsTarget.league.id} teamId={claimsTarget.myTeam.id} currentWeek={currentWeek} />
             <Box sx={{ width: '1px', bgcolor: 'divider' }} />
             <WeekRankingsColumn leagueId={claimsTarget.league.id} teamId={claimsTarget.myTeam.id} currentWeek={currentWeek} />
@@ -877,11 +825,11 @@ export default function ManageTeamsPage() {
                       >
                         {a.current_player ?? 'Empty'}
                       </Typography>
-                      {a.current_week_position_rank != null && (
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', minWidth: 28, textAlign: 'right', flexShrink: 0 }}>
-                          #{a.current_week_position_rank}
-                        </Typography>
-                      )}
+                      <WeekRank
+                        position={a.position}
+                        weekRank={a.current_week_rank}
+                        weekPosRank={a.current_week_position_rank}
+                      />
                       <ArrowForwardIcon sx={{ fontSize: 16, color: 'text.secondary', flexShrink: 0 }} />
                       <Chip
                         label={a.source}
@@ -910,11 +858,11 @@ export default function ManageTeamsPage() {
                       >
                         {a.player_name}
                       </Typography>
-                      {a.player_week_position_rank != null && (
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', minWidth: 28, textAlign: 'right', flexShrink: 0 }}>
-                          #{a.player_week_position_rank}
-                        </Typography>
-                      )}
+                      <WeekRank
+                        position={a.position}
+                        weekRank={a.player_week_rank}
+                        weekPosRank={a.player_week_position_rank}
+                      />
                     </Box>
                   ))}
                 </Box>

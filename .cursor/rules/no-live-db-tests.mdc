@@ -1,0 +1,23 @@
+---
+description: Never run PHPUnit/feature tests; never touch the live Postgres database
+alwaysApply: true
+---
+
+# No live-database tests
+
+The Docker Postgres database (`fantasy_team_manager`) is the user's real data. A feature test with `RefreshDatabase` already wiped it. Do not let that happen again.
+
+## Never
+
+- Run `phpunit`, `artisan test`, or any `tests/Feature` / `RefreshDatabase` suite
+- Run those commands via `docker compose exec backend ...`
+- Truncate, migrate:fresh, migrate:refresh, db:wipe, or drop tables unless the user explicitly asks
+- Treat "test your code" as permission to hit the database
+
+The user validates in the browser. Do not run backend feature tests unless they explicitly ask in that message.
+
+## If you need to check something
+
+- Unit tests that do not use the database are allowed only if the user asks
+- Prefer reading code, existing logs, or a non-destructive SELECT the user requested
+- Never use the backend container's default DB env for test runs

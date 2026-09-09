@@ -14,5 +14,7 @@ class DefenseNameLookupTest extends TestCase
         $this->assertSame('pit', DefenseNameLookup::normalize('PIT D'));
         $this->assertSame('rams', DefenseNameLookup::normalize('Rams DST'));
         $this->assertSame('san francisco', DefenseNameLookup::normalize('San Francisco'));
+        $this->assertSame('jacksonville jaguars', DefenseNameLookup::normalize('Jacksonville Jaguars'));
+        $this->assertSame('los angeles chargers', DefenseNameLookup::normalize('Los Angeles Chargers'));
     }
 }

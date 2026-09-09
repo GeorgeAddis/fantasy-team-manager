@@ -9,7 +9,10 @@ use App\Http\Requests\Api\V1\PlayerUpdateRequest;
 use App\Http\Resources\PlayerResource;
 use App\Models\IrlFranchise;
 use App\Models\Player;
+use App\Support\DefenseNameLookup;
 use App\Support\RankingFields;
+use App\Support\RankingPasteLine;
+use App\Support\SflexRankingSplit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -276,6 +279,128 @@ class PlayerController extends Controller
         ]);
     }
 
+    /**
+     * Create QB/RB/WR/TE/K/DST players from Fantrax getPlayerIds.
+     */
+    public function importFromFantrax(Request $request): JsonResponse
+    {
+        $clearExisting = $request->boolean('clear_existing');
+        $skipExisting = $request->boolean('skip_existing', true);
+
+        if ($clearExisting && $skipExisting) {
+            return response()->json([
+                'message' => 'Cannot use "clear existing" and "skip existing" at the same time.',
+            ], 422);
+        }
+
+        $response = Http::timeout(60)
+            ->withHeaders(['User-Agent' => 'Mozilla/5.0'])
+            ->get('https://www.fantrax.com/fxea/general/getPlayerIds', [
+                'sport' => 'NFL',
+            ]);
+
+        if (!$response->successful()) {
+            return response()->json([
+                'message' => 'Failed to fetch players from Fantrax (HTTP '.$response->status().').',
+            ], 502);
+        }
+
+        $parsed = $this->parseFantraxPlayersForImport($response->json() ?? []);
+        if ($parsed === []) {
+            return response()->json(['message' => 'Fantrax returned no fantasy players.'], 422);
+        }
+
+        $franchises = IrlFranchise::all();
+        $teamLookup = $this->buildFranchiseTeamLookup($franchises);
+        $franchiseById = $franchises->keyBy('id');
+
+        $cleared = 0;
+        if ($clearExisting) {
+            $cleared = Player::query()->count();
+            Player::query()->delete();
+        }
+
+        $existingByFantraxId = [];
+        $existingByName = [];
+        if ($skipExisting && !$clearExisting) {
+            foreach (Player::query()->select(['id', 'name', 'alternate_name', 'fantrax_id'])->get() as $p) {
+                if ($p->fantrax_id) {
+                    $existingByFantraxId[$p->fantrax_id] = true;
+                }
+                $existingByName[$this->normalizePlayerName($p->name)] = true;
+                if ($p->alternate_name) {
+                    $existingByName[$this->normalizePlayerName($p->alternate_name)] = true;
+                }
+            }
+        }
+
+        $now = now();
+        $rows = [];
+        $skipped = 0;
+        $seenFantrax = [];
+
+        foreach ($parsed as $fp) {
+            $fantraxId = $fp['fantrax_id'];
+            if ($fantraxId !== '' && isset($seenFantrax[$fantraxId])) {
+                continue;
+            }
+            if ($fantraxId !== '') {
+                $seenFantrax[$fantraxId] = true;
+            }
+
+            $franchiseId = $fp['team'] !== '' ? ($teamLookup[$fp['team']] ?? null) : null;
+            if ($franchiseId === null && $fp['team_name'] !== '') {
+                $franchiseId = $teamLookup[$this->normalizeForMatch($fp['team_name'])] ?? null;
+            }
+
+            $name = $fp['name'];
+            if ($fp['pos'] === 'DST' && $franchiseId !== null) {
+                $name = $this->dstDisplayName($franchiseById->get($franchiseId));
+            }
+            if ($name === '') {
+                $skipped++;
+                continue;
+            }
+
+            if ($skipExisting && !$clearExisting) {
+                if (($fantraxId !== '' && isset($existingByFantraxId[$fantraxId]))
+                    || isset($existingByName[$this->normalizePlayerName($name)])) {
+                    $skipped++;
+                    continue;
+                }
+            }
+
+            $rows[] = [
+                'name' => $name,
+                'fantrax_id' => $fantraxId !== '' ? $fantraxId : null,
+                'irl_franchise_id' => $franchiseId,
+                'positions' => json_encode([$fp['pos']]),
+                'week_rank' => 999,
+                'week_position_rank' => 999,
+                'week_rank_non_ppr' => 999,
+                'week_position_rank_non_ppr' => 999,
+                'season_rank' => 999,
+                'season_position_rank' => 999,
+                'season_rank_non_ppr' => 999,
+                'season_position_rank_non_ppr' => 999,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        foreach (array_chunk($rows, 500) as $chunk) {
+            Player::query()->insert($chunk);
+        }
+
+        return response()->json([
+            'imported' => count($rows),
+            'skipped' => $skipped,
+            'cleared' => $cleared,
+            'failed_rows' => [],
+            'source' => 'fantrax',
+        ]);
+    }
+
     private function parseCsvRows($handle): ?array
     {
         $header = fgetcsv($handle);
@@ -283,10 +408,31 @@ class PlayerController extends Controller
             return null;
         }
 
-        $header = array_map(fn ($h) => strtolower(trim($h)), $header);
-        $playerCol = array_search('player', $header);
-        $teamCol   = array_search('team', $header);
-        $posCol    = array_search('position', $header);
+        if (isset($header[0])) {
+            $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header[0]) ?? $header[0];
+        }
+        if (count($header) === 1 && str_contains((string) $header[0], "\t")) {
+            $header = str_getcsv((string) $header[0], "\t");
+        }
+
+        $normalized = array_map(
+            fn ($h) => preg_replace('/[^a-z0-9]/', '', strtolower(trim((string) $h))) ?? '',
+            $header
+        );
+        $findCol = function (array $aliases) use ($normalized) {
+            foreach ($aliases as $alias) {
+                $idx = array_search($alias, $normalized, true);
+                if ($idx !== false) {
+                    return $idx;
+                }
+            }
+
+            return false;
+        };
+
+        $playerCol = $findCol(['player', 'playername', 'name']);
+        $teamCol = $findCol(['team', 'nfl', 'tm']);
+        $posCol = $findCol(['position', 'pos']);
 
         if ($playerCol === false || $teamCol === false || $posCol === false) {
             return ['error' => 'CSV must have "Player", "Team", and "Position" column headers in the first row.'];
@@ -392,6 +538,133 @@ class PlayerController extends Controller
         return [$filtered, $skipped, $failedRows];
     }
 
+    /**
+     * @return list<array{fantrax_id: string, name: string, pos: string, team: string, team_name: string}>
+     */
+    private function parseFantraxPlayersForImport(array $data): array
+    {
+        $map = isset($data['playerIds']) && is_array($data['playerIds'])
+            ? $data['playerIds']
+            : $data;
+
+        $players = [];
+        foreach ($map as $id => $value) {
+            if (!is_array($value)) {
+                continue;
+            }
+
+            $pos = $this->mapFantraxPosition((string) ($value['pos'] ?? $value['position'] ?? ''));
+            if ($pos === null) {
+                continue;
+            }
+
+            $teamAbbr = strtoupper(trim((string) ($value['teamShortName'] ?? $value['team'] ?? '')));
+            if ($teamAbbr === '(N/A)') {
+                $teamAbbr = '';
+            }
+            $teamName = trim((string) ($value['teamName'] ?? ''));
+
+            if ($pos === 'DST') {
+                if ($teamAbbr === '' && $teamName === '') {
+                    continue;
+                }
+                $players[] = [
+                    'fantrax_id' => (string) ($value['fantraxId'] ?? $id),
+                    'name' => $teamName !== '' ? $teamName : $teamAbbr,
+                    'pos' => 'DST',
+                    'team' => $teamAbbr,
+                    'team_name' => $teamName,
+                ];
+                continue;
+            }
+
+            $name = (string) ($value['name'] ?? '');
+            if (str_contains($name, ',')) {
+                [$last, $first] = array_map('trim', explode(',', $name, 2));
+                $name = trim($first.' '.$last);
+            }
+            if ($name === '') {
+                continue;
+            }
+
+            $players[] = [
+                'fantrax_id' => (string) ($value['fantraxId'] ?? $id),
+                'name' => $name,
+                'pos' => $pos,
+                'team' => $teamAbbr,
+                'team_name' => $teamName,
+            ];
+        }
+
+        return $players;
+    }
+
+    private function buildFranchiseTeamLookup($franchises): array
+    {
+        $lookup = $this->buildFranchiseAbbrLookup($franchises);
+        foreach ($franchises as $f) {
+            $lookup[$this->normalizeForMatch($f->name)] = $f->id;
+            if ($f->alternate_name) {
+                $lookup[$this->normalizeForMatch($f->alternate_name)] = $f->id;
+            }
+        }
+
+        foreach ([
+            'CAR' => 'CAN',
+            'WSH' => 'WAS',
+            'JAC' => 'JAX',
+            'GBP' => 'GB',
+            'GNB' => 'GB',
+            'KCC' => 'KC',
+            'NOS' => 'NO',
+            'NOR' => 'NO',
+            'SFO' => 'SF',
+            'TBB' => 'TB',
+            'TAM' => 'TB',
+            'NWE' => 'NE',
+        ] as $fantraxAbbr => $localAbbr) {
+            if (!isset($lookup[$fantraxAbbr]) && isset($lookup[$localAbbr])) {
+                $lookup[$fantraxAbbr] = $lookup[$localAbbr];
+            }
+        }
+
+        foreach ($franchises as $f) {
+            if (str_contains(strtolower($f->name), 'carolina') && !isset($lookup['CAR'])) {
+                $lookup['CAR'] = $f->id;
+            }
+        }
+
+        return $lookup;
+    }
+
+    private function dstDisplayName(?IrlFranchise $franchise): string
+    {
+        if (!$franchise) {
+            return '';
+        }
+        if ($franchise->alternate_name) {
+            return $franchise->alternate_name;
+        }
+
+        $special = [
+            'LAC' => 'LA Chargers',
+            'LAR' => 'LA Rams',
+            'NYG' => 'NY Giants',
+            'NYJ' => 'NY Jets',
+        ];
+        $abbr = strtoupper((string) $franchise->abbreviated_name);
+        if (isset($special[$abbr])) {
+            return $special[$abbr];
+        }
+
+        $parts = preg_split('/\s+/', trim((string) $franchise->name)) ?: [];
+        if (count($parts) > 1) {
+            return implode(' ', array_slice($parts, 0, -1));
+        }
+
+        return (string) $franchise->name;
+    }
+
     private function buildFranchiseAbbrLookup($franchises): array
     {
         $lookup = [];
@@ -436,12 +709,13 @@ class PlayerController extends Controller
      * Import ranking data from pasted tab-separated text.
      * Types: QB, DST, K → sets week/season_position_rank from # column.
      * Type: RWT → sets week/season_rank from # column, parses Pos column for position rank.
+     * Type: SFLEX → extracts QBs into QB ranks; remaining RB/WR/TE get RWT ranks.
      */
     public function importRankings(Request $request): JsonResponse
     {
         $request->validate([
             'data' => ['required', 'string', 'min:5'],
-            'type' => ['required', 'string', 'in:QB,RWT,DST,K'],
+            'type' => ['required', 'string', 'in:SFLEX,QB,RWT,DST,K'],
             'period' => ['required', 'string', 'in:week,season'],
             'ppr' => ['sometimes', 'boolean'],
         ]);
@@ -449,6 +723,7 @@ class PlayerController extends Controller
         $type = $request->input('type');
         $period = $request->input('period');
         $isRwt = $type === 'RWT';
+        $isSflex = $type === 'SFLEX';
         $cols = RankingFields::columns(null, $request->boolean('ppr', true));
 
         $lines = array_values(array_filter(
@@ -475,44 +750,85 @@ class PlayerController extends Controller
             }
         }
 
+        $dstLookup = DefenseNameLookup::buildPlayerLookup();
+
+        $parsed = [];
+        foreach ($lines as $line) {
+            $row = RankingPasteLine::parse($line);
+            if ($row === null) {
+                continue;
+            }
+
+            $player = $playerByName[$this->normalizePlayerName($row['name'])] ?? null;
+            $dstPlayer = DefenseNameLookup::findPlayer($row['name'], $dstLookup);
+            if ($type === 'DST') {
+                $player = $dstPlayer
+                    ?? ((in_array('DST', $player?->positions ?? [], true)) ? $player : null);
+            } elseif (!$player && $dstPlayer) {
+                $player = $dstPlayer;
+            }
+
+            $parsed[] = [
+                'file_rank' => $row['file_rank'],
+                'name' => $row['name'],
+                'pos_raw' => $row['pos_raw'],
+                'player' => $player,
+            ];
+        }
+
+        foreach ($parsed as $i => $row) {
+            if ($row['file_rank'] <= 0) {
+                $parsed[$i]['file_rank'] = $i + 1;
+            }
+        }
+
+        $assignments = $isSflex
+            ? SflexRankingSplit::assign(array_map(fn ($row) => [
+                'pos_raw' => $row['pos_raw'],
+                'positions' => $row['player']?->positions ?? [],
+            ], $parsed))
+            : [];
+
         $updated = 0;
         $notFound = [];
 
-        foreach ($lines as $line) {
-            $colsLine = preg_split('/\t/', $line);
-            $rank = (int) trim($colsLine[0] ?? '');
-            $rawPlayer = trim($colsLine[1] ?? '');
-
-            if ($rank <= 0 || $rawPlayer === '') {
+        foreach ($parsed as $i => $row) {
+            if (!$row['player']) {
+                $notFound[] = ['rank' => $row['file_rank'], 'name' => $row['name']];
                 continue;
             }
 
-            $playerName = preg_replace('/\s*\([^)]*\)\s*$/', '', $rawPlayer);
-            $playerName = trim($playerName);
-
-            $player = $playerByName[$this->normalizePlayerName($playerName)] ?? null;
-            if (!$player) {
-                $notFound[] = ['rank' => $rank, 'name' => $playerName];
-                continue;
-            }
-
-            if ($isRwt) {
-                $posRaw = trim($colsLine[3] ?? '');
-                $posRank = null;
-                if (preg_match('/^(RB|WR|TE)(\d+)$/i', $posRaw, $m)) {
-                    $posRank = (int) $m[2];
+            if ($isSflex) {
+                $assignment = $assignments[$i] ?? null;
+                if (($assignment['kind'] ?? null) === null) {
+                    continue;
                 }
 
+                if ($assignment['kind'] === 'QB') {
+                    $fields = $period === 'week'
+                        ? [$cols['week_position_rank'] => $assignment['position_rank']]
+                        : [$cols['season_position_rank'] => $assignment['position_rank']];
+                } else {
+                    $posRank = $assignment['position_rank'] ?? 999;
+                    $fields = $period === 'week'
+                        ? [$cols['week_rank'] => $assignment['overall_rank'], $cols['week_position_rank'] => $posRank]
+                        : [$cols['season_rank'] => $assignment['overall_rank'], $cols['season_position_rank'] => $posRank];
+                }
+            } elseif ($isRwt) {
+                $posRank = SflexRankingSplit::parseSkillPosRank($row['pos_raw']) ?? 999;
                 $fields = $period === 'week'
-                    ? [$cols['week_rank'] => $rank, $cols['week_position_rank'] => $posRank ?? 999]
-                    : [$cols['season_rank'] => $rank, $cols['season_position_rank'] => $posRank ?? 999];
+                    ? [$cols['week_rank'] => $row['file_rank'], $cols['week_position_rank'] => $posRank]
+                    : [$cols['season_rank'] => $row['file_rank'], $cols['season_position_rank'] => $posRank];
             } else {
                 $fields = $period === 'week'
-                    ? [$cols['week_position_rank'] => $rank]
-                    : [$cols['season_position_rank'] => $rank];
+                    ? [$cols['week_position_rank'] => $row['file_rank']]
+                    : [$cols['season_position_rank'] => $row['file_rank']];
+                if (RankingFields::isScoringIndependent($row['player']->positions ?? [], $type)) {
+                    $fields = RankingFields::mirrorScoringIndependent($fields);
+                }
             }
 
-            Player::query()->where('id', $player->id)->update($fields);
+            Player::query()->where('id', $row['player']->id)->update($fields);
             $updated++;
         }
 
@@ -684,10 +1000,14 @@ class PlayerController extends Controller
             ]);
 
             foreach ($pending as $row) {
-                Player::query()->where('id', $row['player']->id)->update([
+                $fields = [
                     $seasonCol => $row['season_rank'],
                     $seasonPosCol => $row['pos_rank'] ?? 999,
-                ]);
+                ];
+                if (RankingFields::isScoringIndependent($row['player']->positions ?? [], $row['position'] ?? null)) {
+                    $fields = RankingFields::mirrorScoringIndependent($fields);
+                }
+                Player::query()->where('id', $row['player']->id)->update($fields);
                 $updated++;
             }
         });
@@ -773,6 +1093,7 @@ class PlayerController extends Controller
         $type = $request->input('type');
         $cols = RankingFields::columns(null, $request->boolean('ppr', true));
         $rankField = $type === 'OVR' ? $cols['waiver_rank_overall'] : $cols['waiver_rank'];
+        $shareAcrossScoring = RankingFields::isScoringIndependent([], $type);
 
         $lines = array_values(array_filter(
             array_map('trim', explode("\n", $request->input('data'))),
@@ -786,11 +1107,16 @@ class PlayerController extends Controller
             return response()->json(['message' => 'No data provided.'], 422);
         }
 
+        $clearFields = [$rankField => null];
+        if ($shareAcrossScoring) {
+            $clearFields = RankingFields::mirrorScoringIndependent($clearFields);
+        }
+
         // Clear existing rankings for this type + scoring format
         if ($type === 'OVR') {
-            Player::query()->update([$rankField => null]);
+            Player::query()->update($clearFields);
         } else {
-            Player::whereJsonContains('positions', $type)->update([$rankField => null]);
+            Player::whereJsonContains('positions', $type)->update($clearFields);
         }
 
         $allPlayers = Player::all();
@@ -834,7 +1160,11 @@ class PlayerController extends Controller
                 continue;
             }
 
-            Player::query()->where('id', $player->id)->update([$rankField => $rank]);
+            $writeFields = [$rankField => $rank];
+            if ($shareAcrossScoring) {
+                $writeFields = RankingFields::mirrorScoringIndependent($writeFields);
+            }
+            Player::query()->where('id', $player->id)->update($writeFields);
             $updated++;
         }
 

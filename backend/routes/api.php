@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\DefenseWeekRankController;
 use App\Http\Controllers\Api\V1\GlobalSettingController;
 use App\Http\Controllers\Api\V1\IrlFranchiseController;
+use App\Http\Controllers\Api\V1\IrlScheduleController;
 use App\Http\Controllers\Api\V1\LeagueController;
 use App\Http\Controllers\Api\V1\LineupSlotController;
 use App\Http\Controllers\Api\V1\PlayerController;
@@ -32,7 +33,10 @@ Route::prefix('v1')->group(function () {
     Route::get('teams/{team}/roster', [TeamController::class, 'roster']);
     Route::apiResource('teams', TeamController::class);
     Route::apiResource('irl-franchises', IrlFranchiseController::class);
+    Route::get('irl-schedule', [IrlScheduleController::class, 'index']);
+    Route::post('irl-schedule/update', [IrlScheduleController::class, 'update']);
     Route::get('defense-week-ranks/management', [DefenseWeekRankController::class, 'management']);
+    Route::post('defense-week-ranks/copy-from-week-rankings', [DefenseWeekRankController::class, 'copyFromWeekRankings']);
     Route::get('defense-week-ranks', [DefenseWeekRankController::class, 'index']);
     Route::put('defense-week-ranks', [DefenseWeekRankController::class, 'update']);
     Route::get('players/do-not-roster', [PlayerController::class, 'doNotRosterList']);
@@ -41,6 +45,7 @@ Route::prefix('v1')->group(function () {
     Route::post('players/reset-do-not-roster', [PlayerController::class, 'doNotRosterReset']);
     Route::get('players/do-not-roster-teams', [PlayerController::class, 'doNotRosterTeams']);
     Route::post('players/import', [PlayerController::class, 'import']);
+    Route::post('players/import-from-fantrax', [PlayerController::class, 'importFromFantrax']);
     Route::post('players/import-rankings', [PlayerController::class, 'importRankings']);
     Route::post('players/import-season-rankings', [PlayerController::class, 'importSeasonRankings']);
     Route::post('players/import-waiver-rankings', [PlayerController::class, 'importWaiverRankings']);

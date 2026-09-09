@@ -25,7 +25,7 @@ class LeagueController extends Controller
     public function index(): AnonymousResourceCollection
     {
         return LeagueResource::collection(
-            League::query()->with('teams')->orderBy('id')->paginate(50)
+            League::query()->with('teams')->orderByDesc('id')->paginate(50)
         );
     }
 
@@ -332,6 +332,7 @@ class LeagueController extends Controller
      */
     public function updateAllRosters(Request $request): JsonResponse
     {
+        set_time_limit(0);
         $bestball = $request->boolean('bestball', false);
 
         $leagues = League::query()

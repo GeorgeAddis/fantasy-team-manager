@@ -134,7 +134,7 @@ export default function WeekRankingsColumn({ leagueId, teamId, currentWeek = 0 }
           >
             <Typography sx={HEADER_SX}>Rank</Typography>
             <Typography sx={HEADER_SX}>Name</Typography>
-            <Typography sx={HEADER_SX}>Bye</Typography>
+            <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Bye</Typography>
             {isRwt && <Typography sx={HEADER_SX}>Pos</Typography>}
           </Box>
 
@@ -167,7 +167,7 @@ export default function WeekRankingsColumn({ leagueId, teamId, currentWeek = 0 }
                       <Typography variant="body2" sx={{ ...CELL_SX, color: textColor }}>
                         {displayName(row)}
                       </Typography>
-                      <Typography variant="body2" sx={{ ...CELL_SX, color: subColor }}>
+                      <Typography variant="body2" sx={{ ...CELL_SX, color: subColor, textAlign: 'right' }}>
                         {row.bye_week ?? '—'}
                       </Typography>
                       {isRwt && (

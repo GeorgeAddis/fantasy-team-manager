@@ -44,9 +44,38 @@ class DefenseNameLookup
     }
 
     /**
+     * @return array<string, Player>
+     */
+    public static function buildPlayerLookup(): array
+    {
+        $dstByFranchiseId = Player::query()
+            ->whereJsonContains('positions', 'DST')
+            ->get()
+            ->keyBy('irl_franchise_id');
+
+        $lookup = [];
+        foreach (self::build() as $key => $franchise) {
+            $player = $dstByFranchiseId->get($franchise->id);
+            if ($player) {
+                $lookup[$key] = $player;
+            }
+        }
+
+        return $lookup;
+    }
+
+    /**
      * @param  array<string, IrlFranchise>  $lookup
      */
     public static function find(string $name, array $lookup): ?IrlFranchise
+    {
+        return $lookup[self::normalize($name)] ?? null;
+    }
+
+    /**
+     * @param  array<string, Player>  $lookup
+     */
+    public static function findPlayer(string $name, array $lookup): ?Player
     {
         return $lookup[self::normalize($name)] ?? null;
     }

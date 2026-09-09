@@ -2,7 +2,6 @@ import { useState } from 'react'
 import {
   Box,
   Button,
-  Chip,
   CircularProgress,
   Dialog,
   DialogContent,
@@ -19,7 +18,6 @@ import {
 } from '@mui/material'
 import ListAltIcon from '@mui/icons-material/ListAlt'
 import SyncIcon from '@mui/icons-material/Sync'
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import CloseIcon from '@mui/icons-material/Close'
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
@@ -28,6 +26,8 @@ import TuneIcon from '@mui/icons-material/Tune'
 import RosterDialog from '@/components/RosterDialog'
 import RosterUpdateResultDialog from '@/components/RosterUpdateResultDialog'
 import { useUpdateRosters } from '@/hooks/useLeagues'
+import { useSettings } from '@/hooks/useSettings'
+import { LineupChangesView } from './OptimalLineupPanel'
 
 function formatUpdatedAt(iso) {
   if (!iso) return null
@@ -53,9 +53,9 @@ const POSITION_COLORS = {
   DST: '#90a4ae',
 }
 
-function SuggestedChangesDialog({ open, onClose, changes, leagueName }) {
+function SuggestedChangesDialog({ open, onClose, changes, optimalLineup, leagueName, currentWeek = 0 }) {
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle
         sx={{
           display: 'flex',
@@ -79,70 +79,11 @@ function SuggestedChangesDialog({ open, onClose, changes, leagueName }) {
         </IconButton>
       </DialogTitle>
       <DialogContent sx={{ pt: 0, pb: 2.5 }}>
-        {(!changes || changes.length === 0) ? (
-          <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
-            No changes suggested.
-          </Typography>
-        ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {changes.map((c, i) => (
-              <Box
-                key={i}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1.5,
-                  py: 0.75,
-                  px: 1,
-                  borderRadius: 1,
-                  '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' },
-                }}
-              >
-                <Chip
-                  label={c.position}
-                  size="small"
-                  sx={{
-                    width: 52,
-                    height: 24,
-                    fontWeight: 700,
-                    fontSize: '0.7rem',
-                    bgcolor: POSITION_COLORS[c.position] ?? '#616161',
-                    color: '#fff',
-                  }}
-                />
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: 'error.light',
-                    textDecoration: 'line-through',
-                    flex: 1,
-                    minWidth: 0,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {c.current_player ?? 'Empty'}
-                </Typography>
-                <ArrowForwardIcon sx={{ fontSize: 16, color: 'text.secondary', flexShrink: 0 }} />
-                <Typography
-                  variant="body2"
-                  sx={{
-                    color: 'success.light',
-                    fontWeight: 600,
-                    flex: 1,
-                    minWidth: 0,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {c.bench_player ?? 'Empty'}
-                </Typography>
-              </Box>
-            ))}
-          </Box>
-        )}
+        <LineupChangesView
+          changes={changes}
+          lineup={optimalLineup}
+          currentWeek={currentWeek}
+        />
       </DialogContent>
     </Dialog>
   )
@@ -155,6 +96,8 @@ const HEAD_CELL = { fontWeight: 700, color: 'text.secondary' }
  * variant: 'all' | 'require-lineup-change'
  */
 export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onMakeAdds, onOptimise, onThursdayUpdate }) {
+  const { data: settingsData } = useSettings()
+  const currentWeek = parseInt(settingsData?.data?.current_week ?? '0', 10)
   const [rosterTarget, setRosterTarget] = useState(null)
   const [changesTarget, setChangesTarget] = useState(null)
   const [updateTarget, setUpdateTarget] = useState(null)
@@ -254,7 +197,11 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
                       size="small"
                       variant="contained"
                       startIcon={<CompareArrowsIcon />}
-                      onClick={() => setChangesTarget({ changes: analysis?.suggested_changes, leagueName: league.name })}
+                      onClick={() => setChangesTarget({
+                        changes: analysis?.suggested_changes,
+                        optimalLineup: analysis?.optimal_lineup,
+                        leagueName: league.name,
+                      })}
                       sx={{
                         textTransform: 'none',
                         bgcolor: 'primary.main',
@@ -305,7 +252,7 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
                       size="small"
                       variant="contained"
                       startIcon={<SyncIcon />}
-                      onClick={() => onThursdayUpdate?.({ league, myTeam, analysis, rosterAdd: thursdayRosterAdd ?? rosterAdd })}
+                      onClick={() => onThursdayUpdate?.({ league, myTeam, analysis, rosterAdd: thursdayRosterAdd })}
                       sx={{
                         textTransform: 'none',
                         bgcolor: 'primary.main',
@@ -387,7 +334,9 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
         open={Boolean(changesTarget)}
         onClose={() => setChangesTarget(null)}
         changes={changesTarget?.changes}
+        optimalLineup={changesTarget?.optimalLineup}
         leagueName={changesTarget?.leagueName}
+        currentWeek={currentWeek}
       />
 
       <RosterUpdateResultDialog

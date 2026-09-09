@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\DefenseWeekRank;
 use App\Models\IrlFranchise;
+use App\Models\Player;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -76,6 +77,50 @@ class DefenseWeekRankTest extends TestCase
             ->assertJsonPath('data.0.rank', 1)
             ->assertJsonPath('data.0.abbreviated_name', 'LAR')
             ->assertJsonPath('data.1.abbreviated_name', 'PIT');
+    }
+
+    public function test_it_copies_dst_week_position_ranks(): void
+    {
+        $jax = IrlFranchise::query()->create([
+            'name' => 'Jacksonville Jaguars',
+            'abbreviated_name' => 'JAX',
+        ]);
+        $lac = IrlFranchise::query()->create([
+            'name' => 'Los Angeles Chargers',
+            'abbreviated_name' => 'LAC',
+        ]);
+
+        Player::query()->create([
+            'name' => 'Jacksonville',
+            'irl_franchise_id' => $jax->id,
+            'positions' => ['DST'],
+            'week_position_rank' => 1,
+        ]);
+        Player::query()->create([
+            'name' => 'LA Chargers',
+            'irl_franchise_id' => $lac->id,
+            'positions' => ['DST'],
+            'week_position_rank' => 2,
+        ]);
+
+        $this->postJson('/api/v1/defense-week-ranks/copy-from-week-rankings', [
+            'week' => 4,
+        ])
+            ->assertOk()
+            ->assertJsonPath('updated', 2)
+            ->assertJsonPath('week', 4)
+            ->assertJsonPath('source', 'week_rankings');
+
+        $this->assertDatabaseHas('defense_week_ranks', [
+            'irl_franchise_id' => $jax->id,
+            'week' => 4,
+            'rank' => 1,
+        ]);
+        $this->assertDatabaseHas('defense_week_ranks', [
+            'irl_franchise_id' => $lac->id,
+            'week' => 4,
+            'rank' => 2,
+        ]);
     }
 
     public function test_it_rejects_invalid_weeks(): void

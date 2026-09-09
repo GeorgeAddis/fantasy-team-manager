@@ -9,10 +9,15 @@ import {
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import LeaderboardIcon from '@mui/icons-material/Leaderboard'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import SyncIcon from '@mui/icons-material/Sync'
 import PasteDataDialog from '@/components/PasteDataDialog'
 import { useSettings } from '@/hooks/useSettings'
-import { useDefenseWeekRanks, useUpdateDefenseWeekRanks } from '@/hooks/useDefenseWeekRanks'
+import {
+  useCopyDefenseWeekRanksFromWeekRankings,
+  useDefenseWeekRanks,
+  useUpdateDefenseWeekRanks,
+} from '@/hooks/useDefenseWeekRanks'
 
 const MIN_WEEK = 1
 const MAX_WEEK = 17
@@ -29,6 +34,7 @@ export default function DefenseWeekByWeekPanel() {
   const [updateOpen, setUpdateOpen] = useState(false)
   const [updateText, setUpdateText] = useState('')
   const updateMutation = useUpdateDefenseWeekRanks()
+  const copyMutation = useCopyDefenseWeekRanksFromWeekRankings()
 
   useEffect(() => {
     if (week != null || !settingsData) return
@@ -37,24 +43,34 @@ export default function DefenseWeekByWeekPanel() {
 
   const ranksQuery = useDefenseWeekRanks(week)
   const rows = ranksQuery.data?.data ?? []
-  const updateResult = updateMutation.data
+  const updateResult = updateMutation.data ?? copyMutation.data
+  const dialogPending = updateMutation.isPending || copyMutation.isPending
 
   function openUpdate() {
     setUpdateText('')
     updateMutation.reset()
+    copyMutation.reset()
     setUpdateOpen(true)
   }
 
   function closeUpdate() {
-    if (updateMutation.isPending) return
+    if (dialogPending) return
     setUpdateOpen(false)
     setUpdateText('')
     updateMutation.reset()
+    copyMutation.reset()
   }
 
   function handleUpdateSubmit() {
     if (!updateText.trim() || week == null) return
+    copyMutation.reset()
     updateMutation.mutate({ week, data: updateText })
+  }
+
+  function handleCopyFromWeekRankings() {
+    if (week == null) return
+    updateMutation.reset()
+    copyMutation.mutate(week)
   }
 
   const loading = settingsLoading || week == null || ranksQuery.isLoading
@@ -170,7 +186,7 @@ export default function DefenseWeekByWeekPanel() {
         onTextChange={setUpdateText}
         placeholder={'PIT\nSan Francisco\nRams\nKC DST\n...'}
         onSubmit={handleUpdateSubmit}
-        isPending={updateMutation.isPending}
+        isPending={dialogPending}
         submitDisabled={!updateText.trim()}
         submitLabel="Update"
         submitIcon={<SyncIcon />}
@@ -181,16 +197,33 @@ export default function DefenseWeekByWeekPanel() {
           Paste defense names, one per line. Line order is rank. This replaces any existing ranks for week {week}.
         </Typography>
 
-        {updateMutation.isError && (
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={copyMutation.isPending ? <CircularProgress size={14} color="inherit" /> : <ContentCopyIcon />}
+          onClick={handleCopyFromWeekRankings}
+          disabled={dialogPending || week == null}
+          sx={{ textTransform: 'none', mb: 2 }}
+        >
+          Copy from Week Rankings
+        </Button>
+
+        {(updateMutation.isError || copyMutation.isError) && (
           <Alert severity="error" sx={{ mb: 2 }}>
-            {updateMutation.error?.body?.message || updateMutation.error?.message || 'Something went wrong.'}
+            {updateMutation.error?.body?.message
+              || copyMutation.error?.body?.message
+              || updateMutation.error?.message
+              || copyMutation.error?.message
+              || 'Something went wrong.'}
           </Alert>
         )}
 
         {updateResult && (
           <Box sx={{ mb: 2 }}>
             <Alert severity="success" sx={{ mb: 1.5 }}>
-              Updated {updateResult.updated} defense{updateResult.updated !== 1 ? 's' : ''} out of {updateResult.total_lines} rows.
+              {updateResult.source === 'week_rankings'
+                ? `Copied ${updateResult.updated} defense${updateResult.updated !== 1 ? 's' : ''} from week rankings into week ${updateResult.week}.`
+                : `Updated ${updateResult.updated} defense${updateResult.updated !== 1 ? 's' : ''} out of ${updateResult.total_lines} rows.`}
             </Alert>
 
             {updateResult.not_found?.length > 0 && (

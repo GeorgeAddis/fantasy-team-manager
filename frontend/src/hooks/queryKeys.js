@@ -21,6 +21,10 @@ export const queryKeys = {
     all: ['defense-week-ranks'],
     list: (week) => ['defense-week-ranks', 'list', week],
   },
+  irlSchedule: {
+    all: ['irl-schedule'],
+    list: (week) => ['irl-schedule', 'list', week],
+  },
   players: {
     all: ['players'],
     list: (params) => ['players', 'list', params],

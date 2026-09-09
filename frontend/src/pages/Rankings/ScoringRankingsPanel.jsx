@@ -16,7 +16,7 @@ import PasteDataDialog from '@/components/PasteDataDialog'
 import ImportSeasonRankingsDialog from '@/components/ImportSeasonRankingsDialog'
 import PositionToggle from '@/components/PositionToggle'
 
-const UPLOAD_TYPES = ['QB', 'RWT', 'DST', 'K']
+const UPLOAD_TYPES = ['SFLEX', 'QB', 'RWT', 'DST', 'K']
 const WAIVER_POSITIONS = ['OVR', 'QB', 'RB', 'WR', 'TE', 'K', 'DST']
 
 function isRanked(value) {
@@ -52,7 +52,7 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
   const scoringLabel = isPpr ? 'PPR' : 'Non-PPR'
 
   const [importOpen, setImportOpen] = useState(false)
-  const [importType, setImportType] = useState('QB')
+  const [importType, setImportType] = useState('SFLEX')
   const [importText, setImportText] = useState('')
   const importMutation = useImportRankings()
 
@@ -65,7 +65,7 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
   const waiverImportMutation = useImportWaiverRankings()
 
   function openImport() {
-    setImportType('QB')
+    setImportType('SFLEX')
     setImportText('')
     importMutation.reset()
     setImportOpen(true)
@@ -294,7 +294,7 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
         title={`Import ${scoringLabel} Week Rankings`}
         text={importText}
         onTextChange={setImportText}
-        placeholder={'#\tPlayer (team)\tMatchup\t...\n1\tJosh Allen (BUF)\tvs. CIN\t...'}
+        placeholder={'#\tPlayer (team)\tMatchup\tPos\t...\n1\tJahmyr Gibbs (DET)\tvs. NO\tRB1\n2\tJa\'Marr Chase (CIN)\tvs. TB\tWR1\n3\tLamar Jackson (BAL)\tat IND\tQB1'}
         onSubmit={handleImportSubmit}
         isPending={importMutation.isPending}
         submitDisabled={!importText.trim()}
@@ -304,7 +304,9 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
         closeLabel={importResult ? 'Close' : 'Cancel'}
       >
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Select a ranking type and paste the tab-separated data below.
+          {importType === 'SFLEX'
+            ? 'Paste a superflex list (QB + RB/WR/TE). QBs are extracted into QB ranks; everyone else gets RWT ranks and Pos ranks, same as pasting those lists separately.'
+            : 'Select a ranking type and paste the tab-separated data below.'}
         </Typography>
 
         <ToggleButtonGroup

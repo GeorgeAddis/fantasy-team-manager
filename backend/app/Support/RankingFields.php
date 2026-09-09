@@ -60,4 +60,44 @@ class RankingFields
 
         return $out;
     }
+
+    public static function scoringIndependentPositions(): array
+    {
+        return ['K', 'DST'];
+    }
+
+    public static function isScoringIndependent(array $positions = [], ?string $type = null): bool
+    {
+        if ($type !== null && in_array($type, self::scoringIndependentPositions(), true)) {
+            return true;
+        }
+
+        return (bool) array_intersect($positions, self::scoringIndependentPositions());
+    }
+
+    /**
+     * K / DST ranks are the same in PPR and non-PPR. Copy written rank
+     * columns onto the matching column in the other scoring set.
+     */
+    public static function mirrorScoringIndependent(array $fields): array
+    {
+        $pairs = [
+            'week_position_rank' => 'week_position_rank_non_ppr',
+            'week_position_rank_non_ppr' => 'week_position_rank',
+            'season_position_rank' => 'season_position_rank_non_ppr',
+            'season_position_rank_non_ppr' => 'season_position_rank',
+            'waiver_rank' => 'waiver_rank_non_ppr',
+            'waiver_rank_non_ppr' => 'waiver_rank',
+        ];
+
+        $out = $fields;
+        foreach ($fields as $col => $value) {
+            $other = $pairs[$col] ?? null;
+            if ($other !== null && !array_key_exists($other, $out)) {
+                $out[$other] = $value;
+            }
+        }
+
+        return $out;
+    }
 }

@@ -1,24 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Box, CircularProgress, Typography } from '@mui/material'
-import PositionToggleMulti from '@/components/PositionToggleMulti'
+import PositionToggle from '@/components/PositionToggle'
 import { useWaiverBoard } from '@/hooks/useLeagues'
 
-function positionsForFilter(selected) {
-  const expanded = new Set()
-  for (const s of selected) {
-    if (s === 'RWT') {
-      expanded.add('RB')
-      expanded.add('WR')
-      expanded.add('TE')
-    } else {
-      expanded.add(s)
-    }
+function matchesPosition(playerPositions, position) {
+  if (position === 'RWT') {
+    return playerPositions.some((p) => ['RB', 'WR', 'TE'].includes(p))
   }
-  return expanded
-}
-
-function matchesFilter(playerPositions, filterSet) {
-  return playerPositions.some((p) => filterSet.has(p))
+  return playerPositions.includes(position)
 }
 
 const LINEUP_LABEL = {
@@ -30,13 +19,6 @@ function displayName(player) {
   if (!player._mine) return player.name
   const label = LINEUP_LABEL[player.lineup_position] ?? player.lineup_position
   return `${player.name} (${label})`
-}
-
-function positionRankLabel(player) {
-  const pos = player.positions?.[0] ?? ''
-  const rank = player.season_position_rank
-  if (!rank || rank >= 999) return pos
-  return `${pos}${rank}`
 }
 
 const HEADER_SX = {
@@ -60,22 +42,19 @@ function byeTextColor(byeWeek, currentWeek, isMine) {
 }
 
 export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0 }) {
-  const [positions, setPositions] = useState(['QB'])
+  const [position, setPosition] = useState('QB')
   const { data, isLoading } = useWaiverBoard(leagueId, teamId)
 
   const rows = useMemo(() => {
     if (!data) return []
 
-    const filterSet = positionsForFilter(positions)
-    if (filterSet.size === 0) return []
-
     const myPlayers = (data.my_players ?? [])
-      .filter((p) => matchesFilter(p.positions ?? [], filterSet))
+      .filter((p) => matchesPosition(p.positions ?? [], position))
       .filter((p) => p.season_rank != null)
       .map((p) => ({ ...p, _mine: true }))
 
     const available = (data.available ?? [])
-      .filter((p) => matchesFilter(p.positions ?? [], filterSet))
+      .filter((p) => matchesPosition(p.positions ?? [], position))
       .filter((p) => p.season_rank != null)
       .sort((a, b) => a.season_rank - b.season_rank)
 
@@ -110,18 +89,18 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
     merged.sort((a, b) => a.season_rank - b.season_rank)
 
     return merged
-  }, [data, positions])
+  }, [data, position])
 
   return (
     <Box>
       <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
         Rest of Season
       </Typography>
-      <PositionToggleMulti value={positions} onChange={setPositions} sx={{ mb: 2 }} />
+      <PositionToggle value={position} onChange={setPosition} sx={{ mb: 2 }} />
 
       {isLoading && <CircularProgress size={24} sx={{ mt: 2 }} />}
 
-      {!isLoading && rows.length === 0 && positions.length > 0 && (
+      {!isLoading && rows.length === 0 && (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
           No ranked players for this position.
         </Typography>
@@ -132,7 +111,7 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: '50px 1fr 50px 60px',
+              gridTemplateColumns: '50px 1fr 50px',
               px: 1.5,
               py: 0.75,
               bgcolor: 'background.paper',
@@ -142,8 +121,7 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
           >
             <Typography sx={HEADER_SX}>Rank</Typography>
             <Typography sx={HEADER_SX}>Name</Typography>
-            <Typography sx={HEADER_SX}>Bye</Typography>
-            <Typography sx={HEADER_SX}>Pos</Typography>
+            <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Bye</Typography>
           </Box>
 
           <Box sx={{ maxHeight: 520, overflowY: 'auto' }}>
@@ -152,7 +130,7 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
                 key={row.id}
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: '50px 1fr 50px 60px',
+                  gridTemplateColumns: '50px 1fr 50px',
                   px: 1.5,
                   py: 0.5,
                   borderBottom: '1px solid',
@@ -175,11 +153,8 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
                       <Typography variant="body2" sx={{ ...CELL_SX, color: textColor }}>
                         {displayName(row)}
                       </Typography>
-                      <Typography variant="body2" sx={{ ...CELL_SX, color: subColor }}>
+                      <Typography variant="body2" sx={{ ...CELL_SX, color: subColor, textAlign: 'right' }}>
                         {row.bye_week ?? '—'}
-                      </Typography>
-                      <Typography variant="body2" sx={{ ...CELL_SX, color: subColor }}>
-                        {positionRankLabel(row)}
                       </Typography>
                     </>
                   )

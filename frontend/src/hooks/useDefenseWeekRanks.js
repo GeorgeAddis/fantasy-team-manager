@@ -29,3 +29,15 @@ export function useUpdateDefenseWeekRanks() {
     },
   })
 }
+
+export function useCopyDefenseWeekRanksFromWeekRankings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (week) => api.copyDefenseWeekRanksFromWeekRankings(week),
+    onSuccess: (_data, week) => {
+      qc.invalidateQueries({ queryKey: queryKeys.defenseWeekRanks.list(week) })
+      qc.invalidateQueries({ queryKey: queryKeys.defenseWeekRanks.all })
+      qc.invalidateQueries({ queryKey: [...queryKeys.defenseWeekRanks.all, 'management'] })
+    },
+  })
+}

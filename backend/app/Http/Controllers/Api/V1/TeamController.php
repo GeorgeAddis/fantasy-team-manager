@@ -11,6 +11,7 @@ use App\Models\LineupSlot;
 use App\Models\Player;
 use App\Models\Team;
 use App\Support\FantraxLeagueStatusSync;
+use App\Support\OptimalLineup;
 use App\Support\RankingFields;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -153,22 +154,25 @@ class TeamController extends Controller
     public function lineupAnalysis(): JsonResponse
     {
         $teams = Team::query()
-            ->with(['league', 'lineupSlots.player'])
+            ->with(['league', 'lineupSlots.player.irlFranchise'])
             ->whereHas('league', fn ($q) => $q->where('bestball', false))
             ->orderBy('league_id')
             ->orderBy('name')
             ->get();
 
-        $data = $teams->map(function (Team $team) {
-            $changes = $this->computeSuggestedChanges($team);
+        $kickoffs = OptimalLineup::kickoffsForCurrentWeek();
+
+        $data = $teams->map(function (Team $team) use ($kickoffs) {
+            $advice = OptimalLineup::lineupAdvice($team, $kickoffs);
             return [
                 'id'                     => $team->id,
                 'name'                   => $team->name,
                 'league_id'              => $team->league_id,
                 'league_name'            => $team->league?->name,
                 'my_team'                => $team->my_team,
-                'requires_lineup_change' => count($changes) > 0,
-                'suggested_changes'      => $changes,
+                'requires_lineup_change' => count($advice['changes']) > 0,
+                'suggested_changes'      => $advice['changes'],
+                'optimal_lineup'         => $advice['optimal_lineup'],
             ];
         });
 
@@ -186,7 +190,7 @@ class TeamController extends Controller
         $myTeams = Team::query()
             ->where('my_team', true)
             ->whereHas('league', fn ($q) => $q->where('bestball', false))
-            ->with(['league.teams', 'lineupSlots.player'])
+            ->with(['league.teams', 'lineupSlots.player.irlFranchise'])
             ->orderBy('league_id')
             ->orderBy('name')
             ->get();
@@ -204,38 +208,39 @@ class TeamController extends Controller
             }
         }
 
-        $data = $myTeams->map(function (Team $team) use ($actualFaOnly) {
+        $kickoffs = OptimalLineup::kickoffsForCurrentWeek();
+        $freeAgentsByLeague = [];
+
+        $data = $myTeams->map(function (Team $team) use ($actualFaOnly, $kickoffs, &$freeAgentsByLeague) {
             $league = $team->league;
             if (!$league) {
                 return null;
             }
 
-            $leagueTeamIds = $league->teams->pluck('id')->toArray();
+            if (!isset($freeAgentsByLeague[$league->id])) {
+                $leagueTeamIds = $league->teams->pluck('id')->toArray();
+                $rosteredIds = LineupSlot::whereIn('team_id', $leagueTeamIds)
+                    ->whereNotNull('player_id')
+                    ->pluck('player_id')
+                    ->unique()
+                    ->toArray();
 
-            // All rostered player IDs in this league
-            $rosteredIds = LineupSlot::whereIn('team_id', $leagueTeamIds)
-                ->whereNotNull('player_id')
-                ->pluck('player_id')
-                ->unique()
-                ->toArray();
+                $cols = RankingFields::columns($league);
+                $freeAgentQuery = Player::with('irlFranchise')
+                    ->whereNotIn('id', $rosteredIds);
+                $this->constrainToRankedWeek($freeAgentQuery, $cols);
 
-            // Free agents with any ranking for this league's scoring format
-            $cols = RankingFields::columns($league);
-            $freeAgentQuery = Player::with('irlFranchise')
-                ->whereNotIn('id', $rosteredIds)
-                ->where(function ($q) use ($cols) {
-                    $q->whereNotNull($cols['week_rank'])
-                      ->orWhereNotNull($cols['week_position_rank']);
-                });
+                if ($actualFaOnly) {
+                    $freeAgentQuery->whereIn('id', LeaguePlayerStatus::query()
+                        ->where('league_id', $league->id)
+                        ->where('status', 'FA')
+                        ->select('player_id'));
+                }
 
-            if ($actualFaOnly) {
-                $freeAgentQuery->whereIn('id', LeaguePlayerStatus::query()
-                    ->where('league_id', $league->id)
-                    ->where('status', 'FA')
-                    ->select('player_id'));
+                $freeAgentsByLeague[$league->id] = $freeAgentQuery->get();
             }
 
-            $freeAgents = $freeAgentQuery->get();
+            $freeAgents = $freeAgentsByLeague[$league->id];
 
             // My roster players
             $myPlayers = $team->lineupSlots
@@ -247,10 +252,17 @@ class TeamController extends Controller
             $allPlayers = $myPlayers->concat($freeAgents)->unique('id');
             $freeAgentIds = $freeAgents->pluck('id')->flip()->toArray();
 
-            // Run the optimal lineup algorithm (same as computeSuggestedChanges but with FA pool)
-            $suggestions = $this->computeRosterAddSuggestions(
-                $team, $allPlayers, $freeAgentIds, $league
+            // Same OptimalLineup::assign as lineupAdvice, with FA pool included.
+            $advice = $this->computeRosterAddSuggestions(
+                $team, $allPlayers, $freeAgentIds, $league, $kickoffs
             );
+            $suggestedAdds = $advice['suggested_adds'];
+            if ($actualFaOnly) {
+                $suggestedAdds = array_values(array_filter(
+                    $suggestedAdds,
+                    fn ($add) => ($add['source'] ?? '') === 'FA'
+                ));
+            }
 
             return [
                 'id'                    => $team->id,
@@ -258,8 +270,9 @@ class TeamController extends Controller
                 'league_id'             => $league->id,
                 'league_name'           => $league->name,
                 'my_team'               => true,
-                'requires_roster_moves'   => count($suggestions) > 0,
-                'suggested_adds'        => $suggestions,
+                'requires_roster_moves'   => count($suggestedAdds) > 0,
+                'suggested_adds'        => $suggestedAdds,
+                'optimal_lineup'        => $advice['optimal_lineup'],
             ];
         })->filter()->values();
 
@@ -348,76 +361,25 @@ class TeamController extends Controller
     }
 
     /**
-     * Same greedy optimal-lineup algorithm as computeSuggestedChanges,
+     * Same OptimalLineup::assign as lineupAdvice,
      * but the player pool includes league free agents alongside roster players.
      * Reports which players are incoming (FA or BN) and who they replace.
      */
-    private function computeRosterAddSuggestions(Team $team, $allPlayers, array $freeAgentIds, $league = null): array
+    private function computeRosterAddSuggestions(Team $team, $allPlayers, array $freeAgentIds, $league = null, array $kickoffs = []): array
     {
         $slots = $team->lineupSlots;
         if ($slots->isEmpty() || $allPlayers->isEmpty()) {
-            return [];
+            return ['suggested_adds' => [], 'optimal_lineup' => ['starters' => [], 'bench' => []]];
         }
 
         $league = $league ?? $team->league;
         $cols = RankingFields::columns($league);
-        $weekRankCol = $cols['week_rank'];
         $weekPosCol = $cols['week_position_rank'];
 
         $playerLookup = $allPlayers->keyBy('id');
-
-        // Pool of players eligible for a given position, sorted best→worst.
-        $positionRankOnly = ['QB', 'K', 'DST'];
-        $pool = fn (string $pos) => $allPlayers
-            ->filter(fn ($p) => in_array($pos, $p->positions ?? [], true))
-            ->sortBy(in_array($pos, $positionRankOnly, true) ? $weekPosCol : $weekRankCol)
-            ->values();
-
-        // Greedily pick the best unused player(s) for each slot type.
-        $used = [];
-
-        $pickOne = function ($candidates) use (&$used): ?int {
-            foreach ($candidates as $p) {
-                if (!isset($used[$p->id])) {
-                    $used[$p->id] = true;
-                    return $p->id;
-                }
-            }
-            return null;
-        };
-
-        $pickMany = function ($candidates, int $n) use (&$used): array {
-            $picked = [];
-            foreach ($candidates as $p) {
-                if (!isset($used[$p->id])) {
-                    $used[$p->id] = true;
-                    $picked[] = $p->id;
-                    if (count($picked) === $n) break;
-                }
-            }
-            return $picked;
-        };
-
-        $optQB  = $pickOne($pool('QB'));
-        $optRBs = $pickMany($pool('RB'), 2);
-        $optWRs = $pickMany($pool('WR'), 3);
-        $optTE  = $pickOne($pool('TE'));
-
-        $flexPool = $allPlayers
-            ->filter(fn ($p) => !isset($used[$p->id])
-                && array_intersect(['RB', 'WR', 'TE'], $p->positions ?? []))
-            ->sortBy($weekRankCol)
-            ->values();
-        $optRWT = $pickOne($flexPool);
-
-        $optK   = $pickOne($pool('K'));
-        $optDST = $pickOne($pool('DST'));
-
-        // Collect all optimal starter IDs.
-        $optimalIds = array_filter(array_merge(
-            [$optQB], $optRBs, $optWRs, [$optTE, $optRWT, $optK, $optDST]
-        ), fn ($id) => $id !== null);
-        $optimalSet = array_flip($optimalIds);
+        $assigned = OptimalLineup::assign($allPlayers, $league, $kickoffs);
+        $optimalPositionOf = $assigned['positions'];
+        $optimalSet = array_flip($assigned['starter_ids']);
 
         // Collect all current starter IDs.
         $currentStarterIds = [];
@@ -432,19 +394,18 @@ class TeamController extends Controller
         // Players going OUT (currently starting but not in optimal).
         $outgoing = array_diff_key($currentStarterIds, $optimalSet);
 
-        if (empty($incoming)) {
-            return [];
-        }
+        $rostered = $team->lineupSlots
+            ->filter(fn ($s) => $s->player !== null)
+            ->map(fn ($s) => $s->player)
+            ->unique('id');
+        $optimalLineup = OptimalLineup::rosterPayload($allPlayers, $assigned, $league, $rostered);
 
-        // Build optimal position map: player_id → position label.
-        $optimalPositionOf = [];
-        if ($optQB)  $optimalPositionOf[$optQB]  = 'QB';
-        foreach ($optRBs as $i => $id) $optimalPositionOf[$id] = 'RB' . ($i + 1);
-        foreach ($optWRs as $i => $id) $optimalPositionOf[$id] = 'WR' . ($i + 1);
-        if ($optTE)  $optimalPositionOf[$optTE]  = 'TE';
-        if ($optRWT) $optimalPositionOf[$optRWT] = 'FLEX';
-        if ($optK)   $optimalPositionOf[$optK]   = 'K';
-        if ($optDST) $optimalPositionOf[$optDST] = 'DST';
+        if (empty($incoming)) {
+            return [
+                'suggested_adds' => [],
+                'optimal_lineup' => $optimalLineup,
+            ];
+        }
 
         // Build current position map: position label → player_id.
         $currentByPos = [];
@@ -471,191 +432,47 @@ class TeamController extends Controller
             $replacedId = $currentByPos[$targetPos] ?? null;
             $replacedName = null;
             $replacedRank = null;
+            $replacedWeekRank = null;
 
             if ($replacedId !== null && isset($outgoingRemaining[$replacedId])) {
                 $replacedPlayer = $playerLookup[$replacedId] ?? null;
                 $replacedName = $replacedPlayer?->name;
-                $replacedRank = $replacedPlayer?->{$weekPosCol};
+                $replacedRanks = $replacedPlayer ? RankingFields::valuesFor($replacedPlayer, $league) : [];
+                $replacedRank = $replacedRanks['week_position_rank'] ?? $replacedPlayer?->{$weekPosCol};
+                $replacedWeekRank = $replacedRanks['week_rank'] ?? null;
                 unset($outgoingRemaining[$replacedId]);
             } elseif ($replacedId !== null) {
                 // Current holder is staying (reshuffled elsewhere) — find any outgoing player.
                 foreach ($outgoingRemaining as $outId => $_2) {
                     $outPlayer = $playerLookup[$outId] ?? null;
                     $replacedName = $outPlayer?->name;
-                    $replacedRank = $outPlayer?->{$weekPosCol};
+                    $outRanks = $outPlayer ? RankingFields::valuesFor($outPlayer, $league) : [];
+                    $replacedRank = $outRanks['week_position_rank'] ?? $outPlayer?->{$weekPosCol};
+                    $replacedWeekRank = $outRanks['week_rank'] ?? null;
                     unset($outgoingRemaining[$outId]);
                     break;
                 }
             }
 
             $inPlayer = $playerLookup[$playerId] ?? null;
+            $inRanks = $inPlayer ? RankingFields::valuesFor($inPlayer, $league) : [];
 
             $suggestions[] = [
                 'position'                    => $targetPos,
                 'player_name'                 => $inPlayer?->name,
-                'player_week_position_rank'   => $inPlayer?->{$weekPosCol},
+                'player_week_rank'            => $inRanks['week_rank'] ?? null,
+                'player_week_position_rank'   => $inRanks['week_position_rank'] ?? $inPlayer?->{$weekPosCol},
                 'current_player'              => $replacedName,
+                'current_week_rank'           => $replacedWeekRank,
                 'current_week_position_rank'  => $replacedRank,
                 'source'                      => $source,
             ];
         }
 
-        return $suggestions;
-    }
-
-    /**
-     * Compute the suggested lineup changes for a team.
-     *
-     * Only reports changes where a bench player should replace a current starter.
-     * Internal reshuffles between starters (e.g. swapping WR3 ↔ FLEX) are ignored.
-     */
-    private function computeSuggestedChanges(Team $team): array
-    {
-        $slots = $team->lineupSlots;
-        if ($slots->isEmpty()) {
-            return [];
-        }
-
-        $players = $slots
-            ->filter(fn ($s) => $s->player !== null)
-            ->map(fn ($s) => $s->player)
-            ->unique('id');
-
-        if ($players->isEmpty()) {
-            return [];
-        }
-
-        $cols = RankingFields::columns($team->league);
-        $weekRankCol = $cols['week_rank'];
-        $weekPosCol = $cols['week_position_rank'];
-
-        $nameOf = $players->pluck('name', 'id')->toArray();
-
-        // Pool of players eligible for a given position, sorted best→worst.
-        // QB, K, DST only have week_position_rank (imported separately); RB/WR/TE have week_rank.
-        $positionRankOnly = ['QB', 'K', 'DST'];
-        $pool = fn (string $pos) => $players
-            ->filter(fn ($p) => in_array($pos, $p->positions ?? [], true))
-            ->sortBy(in_array($pos, $positionRankOnly, true) ? $weekPosCol : $weekRankCol)
-            ->values();
-
-        // Greedily pick the best unused player(s) for each slot type.
-        $used = [];
-
-        $pickOne = function ($candidates) use (&$used): ?int {
-            foreach ($candidates as $p) {
-                if (!isset($used[$p->id])) {
-                    $used[$p->id] = true;
-                    return $p->id;
-                }
-            }
-            return null;
-        };
-
-        $pickMany = function ($candidates, int $n) use (&$used): array {
-            $picked = [];
-            foreach ($candidates as $p) {
-                if (!isset($used[$p->id])) {
-                    $used[$p->id] = true;
-                    $picked[] = $p->id;
-                    if (count($picked) === $n) break;
-                }
-            }
-            return $picked;
-        };
-
-        $optQB  = $pickOne($pool('QB'));
-        $optRBs = $pickMany($pool('RB'), 2);
-        $optWRs = $pickMany($pool('WR'), 3);
-        $optTE  = $pickOne($pool('TE'));
-
-        $flexPool = $players
-            ->filter(fn ($p) => !isset($used[$p->id])
-                && array_intersect(['RB', 'WR', 'TE'], $p->positions ?? []))
-            ->sortBy($weekRankCol)
-            ->values();
-        $optRWT = $pickOne($flexPool);
-
-        $optK   = $pickOne($pool('K'));
-        $optDST = $pickOne($pool('DST'));
-
-        // Collect all optimal starter IDs.
-        $optimalIds = array_filter(array_merge(
-            [$optQB], $optRBs, $optWRs, [$optTE, $optRWT, $optK, $optDST]
-        ), fn ($id) => $id !== null);
-        $optimalSet = array_flip($optimalIds);
-
-        // Collect all current starter IDs.
-        $currentStarterIds = [];
-        foreach ($slots as $slot) {
-            if ($slot->player_id !== null && $slot->lineup_position->value !== 'BN') {
-                $currentStarterIds[$slot->player_id] = true;
-            }
-        }
-
-        // Players coming IN from bench (in optimal but not currently starting).
-        $incoming = array_diff_key($optimalSet, $currentStarterIds);
-        // Players going OUT to bench (currently starting but not in optimal).
-        $outgoing = array_diff_key($currentStarterIds, $optimalSet);
-
-        if (empty($incoming)) {
-            return [];
-        }
-
-        // Build optimal position map: player_id → position label.
-        $optimalPositionOf = [];
-        if ($optQB)  $optimalPositionOf[$optQB]  = 'QB';
-        foreach ($optRBs as $i => $id) $optimalPositionOf[$id] = 'RB' . ($i + 1);
-        foreach ($optWRs as $i => $id) $optimalPositionOf[$id] = 'WR' . ($i + 1);
-        if ($optTE)  $optimalPositionOf[$optTE]  = 'TE';
-        if ($optRWT) $optimalPositionOf[$optRWT] = 'FLEX';
-        if ($optK)   $optimalPositionOf[$optK]   = 'K';
-        if ($optDST) $optimalPositionOf[$optDST] = 'DST';
-
-        // Build current position map: position label → player_id.
-        $currentByPos = [];
-        foreach ($slots as $slot) {
-            $pos = $slot->lineup_position->value;
-            if ($slot->player_id !== null && $pos !== 'BN') {
-                $label = $pos === 'RWT' ? 'FLEX' : $pos;
-                $currentByPos[$label] = $slot->player_id;
-            }
-        }
-
-        // For each incoming bench player, find who they replace.
-        // Match by the position the bench player should fill in the optimal lineup.
-        $changes = [];
-        $outgoingRemaining = $outgoing;
-
-        foreach ($incoming as $playerId => $_) {
-            $targetPos = $optimalPositionOf[$playerId] ?? null;
-            if (!$targetPos) continue;
-
-            // Find the current holder of this position who is being benched.
-            $replacedId = $currentByPos[$targetPos] ?? null;
-            $replacedName = null;
-
-            if ($replacedId !== null && isset($outgoingRemaining[$replacedId])) {
-                $replacedName = $nameOf[$replacedId] ?? null;
-                unset($outgoingRemaining[$replacedId]);
-            } elseif ($replacedId !== null) {
-                // Current holder is staying (reshuffled elsewhere) — find any outgoing
-                // player at a compatible position instead.
-                foreach ($outgoingRemaining as $outId => $_2) {
-                    $replacedName = $nameOf[$outId] ?? null;
-                    unset($outgoingRemaining[$outId]);
-                    break;
-                }
-            }
-
-            $changes[] = [
-                'position'         => $targetPos,
-                'bench_player'     => $nameOf[$playerId] ?? null,
-                'current_player'   => $replacedName,
-            ];
-        }
-
-        return $changes;
+        return [
+            'suggested_adds' => $suggestions,
+            'optimal_lineup' => $optimalLineup,
+        ];
     }
 
     /**
@@ -669,7 +486,7 @@ class TeamController extends Controller
             ->whereHas('league', fn ($q) => $q->where('bestball', false))
             ->with(['league.teams'])
             ->get()
-            ->sortBy(fn (Team $team) => mb_strtolower($team->league?->name ?? '').'|'.mb_strtolower($team->name))
+            ->sortByDesc(fn (Team $team) => $team->league_id)
             ->values();
 
         $data = $myTeams->map(function (Team $team) {
@@ -740,6 +557,22 @@ class TeamController extends Controller
             })->orWhere(function ($inner) use ($cols) {
                 $inner->where($cols['season_position_rank'], '>', 0)
                     ->where($cols['season_position_rank'], '<', 999);
+            });
+        });
+    }
+
+    /**
+     * Keep players with a real week or week-position rank (exclude 999 / empty).
+     */
+    private function constrainToRankedWeek($query, array $cols): void
+    {
+        $query->where(function ($q) use ($cols) {
+            $q->where(function ($inner) use ($cols) {
+                $inner->where($cols['week_rank'], '>', 0)
+                    ->where($cols['week_rank'], '<', 999);
+            })->orWhere(function ($inner) use ($cols) {
+                $inner->where($cols['week_position_rank'], '>', 0)
+                    ->where($cols['week_position_rank'], '<', 999);
             });
         });
     }

@@ -6,6 +6,7 @@ const ROUTES = [
   { path: '/manage-teams', label: 'Manage Teams' },
   { path: '/update-teams', label: 'Update Teams' },
   { path: '/rankings', label: 'Rankings' },
+  { path: '/irl-schedule', label: 'IRL Schedule' },
   { path: '/setup', label: 'Setup' },
 ]
 

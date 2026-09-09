@@ -7,6 +7,7 @@ export * as leaguesApi from './leagues'
 export * as teamsApi from './teams'
 export * as irlFranchisesApi from './irlFranchises'
 export * as defenseWeekRanksApi from './defenseWeekRanks'
+export * as irlScheduleApi from './irlSchedule'
 export * as playersApi from './players'
 export * as lineupSlotsApi from './lineupSlots'
 

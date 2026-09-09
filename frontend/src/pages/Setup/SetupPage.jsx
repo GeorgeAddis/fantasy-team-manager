@@ -22,7 +22,7 @@ import DownloadingIcon from '@mui/icons-material/Downloading'
 
 import { useLeagueList } from '@/hooks/useLeagues'
 import { useIrlFranchiseList } from '@/hooks/useIrlFranchises'
-import { usePlayerList, useImportPlayers, useImportFantraxIds } from '@/hooks/usePlayers'
+import { usePlayerList, useImportPlayers, useImportPlayersFromFantrax, useImportFantraxIds } from '@/hooks/usePlayers'
 import ImportPlayersDialog from '@/components/ImportPlayersDialog'
 import ImportFantraxIdsDialog from '@/components/ImportFantraxIdsDialog'
 
@@ -43,6 +43,7 @@ export default function SetupPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [fantraxImportOpen, setFantraxImportOpen] = useState(false)
   const importMutation = useImportPlayers()
+  const importFromFantraxMutation = useImportPlayersFromFantrax()
   const fantraxImportMutation = useImportFantraxIds()
 
   const leagueQuery = useLeagueList()
@@ -59,6 +60,7 @@ export default function SetupPage() {
     if (!next) return
     if (next === 'import') {
       importMutation.reset()
+      importFromFantraxMutation.reset()
       setImportOpen(true)
       return
     }
@@ -292,11 +294,22 @@ export default function SetupPage() {
 
       <ImportPlayersDialog
         open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onImport={(file, clear, skip) => importMutation.mutate({ file, clearExisting: clear, skipExisting: skip })}
-        isLoading={importMutation.isPending}
-        result={importMutation.data}
-        error={importMutation.error}
+        onClose={() => {
+          setImportOpen(false)
+          importMutation.reset()
+          importFromFantraxMutation.reset()
+        }}
+        onImport={(file, clear, skip) => {
+          importFromFantraxMutation.reset()
+          importMutation.mutate({ file, clearExisting: clear, skipExisting: skip })
+        }}
+        onImportFromFantrax={(clear, skip) => {
+          importMutation.reset()
+          importFromFantraxMutation.mutate({ clearExisting: clear, skipExisting: skip })
+        }}
+        isLoading={importMutation.isPending || importFromFantraxMutation.isPending}
+        result={importMutation.data ?? importFromFantraxMutation.data}
+        error={importMutation.error ?? importFromFantraxMutation.error}
       />
 
       <ImportFantraxIdsDialog

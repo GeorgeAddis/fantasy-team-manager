@@ -39,6 +39,13 @@ export function importFantraxIds() {
   return apiFetch(`${path}/import-fantrax-ids`, { method: 'POST' })
 }
 
+export function importPlayersFromFantrax(clearExisting = false, skipExisting = true) {
+  return apiFetch(`${path}/import-from-fantrax`, {
+    method: 'POST',
+    body: { clear_existing: clearExisting, skip_existing: skipExisting },
+  })
+}
+
 export function importRankings(data, type, period, ppr = true) {
   return apiFetch(`${path}/import-rankings`, {
     method: 'POST',

@@ -13,10 +13,19 @@ import {
   FormControlLabel,
   Typography,
 } from '@mui/material'
+import CloudDownloadIcon from '@mui/icons-material/CloudDownload'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 
-export default function ImportPlayersDialog({ open, onClose, onImport, isLoading, result, error }) {
+export default function ImportPlayersDialog({
+  open,
+  onClose,
+  onImport,
+  onImportFromFantrax,
+  isLoading,
+  result,
+  error,
+}) {
   const [file, setFile] = useState(null)
   const [clearExisting, setClearExisting] = useState(false)
   const [skipExisting, setSkipExisting] = useState(true)
@@ -66,10 +75,21 @@ export default function ImportPlayersDialog({ open, onClose, onImport, isLoading
       </DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ color: 'text.secondary', mb: 2 }}>
-          Upload a CSV file with <strong>Player</strong>, <strong>Team</strong>, and{' '}
-          <strong>Position</strong> columns. Team should use the franchise abbreviation.
-          After import, Fantrax IDs are matched automatically via the Fantrax API.
+          Import QB/RB/WR/TE/K/DST from Fantrax, or upload a CSV with Player, Team, and Position columns.
         </DialogContentText>
+
+        {onImportFromFantrax && (
+          <Button
+            fullWidth
+            variant="contained"
+            startIcon={isLoading ? <CircularProgress size={16} color="inherit" /> : <CloudDownloadIcon />}
+            disabled={isLoading}
+            onClick={() => onImportFromFantrax(clearExisting, skipExisting)}
+            sx={{ mb: 2, textTransform: 'none', bgcolor: 'primary.main', '&:hover': { bgcolor: 'primary.dark' } }}
+          >
+            Import from Fantrax
+          </Button>
+        )}
 
         <input
           ref={inputRef}

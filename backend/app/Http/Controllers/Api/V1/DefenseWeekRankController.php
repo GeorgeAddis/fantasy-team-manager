@@ -85,12 +85,7 @@ class DefenseWeekRankController extends Controller
             ];
         }
 
-        DB::transaction(function () use ($week, $matched) {
-            DefenseWeekRank::query()->where('week', $week)->delete();
-            if ($matched !== []) {
-                DefenseWeekRank::query()->insert($matched);
-            }
-        });
+        $this->replaceWeek($week, $matched);
 
         return response()->json([
             'updated' => count($matched),
@@ -98,6 +93,67 @@ class DefenseWeekRankController extends Controller
             'total_lines' => count($lines),
             'week' => $week,
         ]);
+    }
+
+    /**
+     * Copy player DST week ranks into defense_week_ranks for one week.
+     */
+    public function copyFromWeekRankings(Request $request): JsonResponse
+    {
+        $week = filter_var($request->input('week'), FILTER_VALIDATE_INT);
+        if ($week === false || $week < 1 || $week > 17) {
+            return response()->json(['message' => 'Week must be between 1 and 17.'], 422);
+        }
+
+        $players = Player::query()
+            ->whereJsonContains('positions', 'DST')
+            ->whereNotNull('irl_franchise_id')
+            ->where('week_position_rank', '>', 0)
+            ->where('week_position_rank', '<', 999)
+            ->orderBy('week_position_rank')
+            ->orderBy('id')
+            ->get();
+
+        if ($players->isEmpty()) {
+            return response()->json(['message' => 'No DST week rankings to copy.'], 422);
+        }
+
+        $matched = [];
+        $seen = [];
+        foreach ($players as $player) {
+            $fid = $player->irl_franchise_id;
+            if (isset($seen[$fid])) {
+                continue;
+            }
+            $seen[$fid] = true;
+            $matched[] = [
+                'irl_franchise_id' => $fid,
+                'week' => $week,
+                'rank' => (int) $player->week_position_rank,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        $this->replaceWeek($week, $matched);
+
+        return response()->json([
+            'updated' => count($matched),
+            'not_found' => [],
+            'total_lines' => count($matched),
+            'week' => $week,
+            'source' => 'week_rankings',
+        ]);
+    }
+
+    private function replaceWeek(int $week, array $matched): void
+    {
+        DB::transaction(function () use ($week, $matched) {
+            DefenseWeekRank::query()->where('week', $week)->delete();
+            if ($matched !== []) {
+                DefenseWeekRank::query()->insert($matched);
+            }
+        });
     }
 
     /**
@@ -119,7 +175,7 @@ class DefenseWeekRankController extends Controller
             ->whereHas('league', fn ($q) => $q->where('bestball', false))
             ->with(['league.teams', 'lineupSlots.player.irlFranchise'])
             ->get()
-            ->sortBy(fn (Team $team) => mb_strtolower($team->league?->name ?? '').'|'.mb_strtolower($team->name))
+            ->sortByDesc(fn (Team $team) => $team->league_id)
             ->values();
 
         $teamLeagueId = [];
