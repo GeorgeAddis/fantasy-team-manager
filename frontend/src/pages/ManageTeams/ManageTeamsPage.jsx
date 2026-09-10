@@ -85,7 +85,7 @@ export default function ManageTeamsPage() {
   const [confirmThursdayOpen, setConfirmThursdayOpen] = useState(false)
   const { data: leagueData, isLoading: leaguesLoading } = useLeagueList()
   const { data: analysisData, isLoading: analysisLoading } = useTeamLineupAnalysis()
-  const { data: rosterAddData, isLoading: rosterAddLoading } = useTeamRosterAddAnalysis()
+  const { data: rosterAddData, isLoading: rosterAddLoading } = useTeamRosterAddAnalysis({ availability: 'FA' })
   const { data: thursdayRosterAddData, isLoading: thursdayRosterAddLoading } = useTeamRosterAddAnalysis(
     { availability: 'FA' },
     { enabled: filter === 'thursday-update' },
@@ -204,7 +204,8 @@ export default function ManageTeamsPage() {
   }
 
   function handleMakeAdds({ league, myTeam, rosterAdd }) {
-    setAddsTarget({ league, myTeam, suggestedAdds: rosterAdd?.suggested_adds ?? [] })
+    const suggestedAdds = (rosterAdd?.suggested_adds ?? []).filter((a) => a.source === 'FA')
+    setAddsTarget({ league, myTeam, suggestedAdds })
   }
 
   function handleOptimise({ league, myTeam }) {
@@ -747,9 +748,14 @@ export default function ManageTeamsPage() {
       return (
         <>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
-            <Typography variant="h6" fontWeight={700} sx={{ color: 'text.primary' }}>
-              Make Adds — {addsTarget.league.name}
-            </Typography>
+            <Box>
+              <Typography variant="h6" fontWeight={700} sx={{ color: 'text.primary' }}>
+                Make Adds — {addsTarget.league.name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Only actual free agents. Players on waivers are not included.
+              </Typography>
+            </Box>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button
                 variant="outlined"
@@ -882,9 +888,16 @@ export default function ManageTeamsPage() {
     return (
       <>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
-          <Typography variant="h6" fontWeight={700} sx={{ color: 'text.primary' }}>
-            {FILTERS.find((f) => f.value === filter)?.label}
-          </Typography>
+          <Box>
+            <Typography variant="h6" fontWeight={700} sx={{ color: 'text.primary' }}>
+              {FILTERS.find((f) => f.value === filter)?.label}
+            </Typography>
+            {isRosterMovesView && (
+              <Typography variant="body2" color="text.secondary">
+                Only actual free agents. Players on waivers are not included.
+              </Typography>
+            )}
+          </Box>
 
           {isAllView && (
             <Button

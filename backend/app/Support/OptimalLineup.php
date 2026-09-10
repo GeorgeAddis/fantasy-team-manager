@@ -44,7 +44,8 @@ class OptimalLineup
     }
 
     /**
-     * Same week-rank starters as before; FLEX is the latest-playing surplus RB/WR/TE.
+     * 1) Best valid lineup by week rank (legal slots).
+     * 2) Then FLEX = latest kickoff in the extra RB/WR/TE group only.
      *
      * @param  Collection<int, Player>  $players
      * @param  array<int, CarbonImmutable>  $kickoffsByFranchiseId
@@ -130,8 +131,7 @@ class OptimalLineup
             $optTE,
             $optRWT,
             $players,
-            $kickoffsByFranchiseId,
-            $weekRankCol
+            $kickoffsByFranchiseId
         );
 
         $positions = [];
@@ -205,7 +205,7 @@ class OptimalLineup
         }
 
         $assigned = self::assign($players, $league, $kickoffsByFranchiseId);
-        $assigned = self::keepCurrentFlexIfNotLater($assigned, $currentPosOf, $playerById, $kickoffsByFranchiseId);
+        $assigned = self::keepCurrentFlexIfSameSurplus($assigned, $currentPosOf, $playerById, $kickoffsByFranchiseId);
         $optimalPositionOf = $assigned['positions'];
         $optimalSet = array_flip($assigned['starter_ids']);
 
@@ -307,6 +307,10 @@ class OptimalLineup
     }
 
     /**
+     * After a legal rank lineup, put FLEX on the latest kickoff in the surplus
+     * RB/WR/TE group only. Same kickoff keeps the rank FLEX. Never moves a WR
+     * into an RB slot or the reverse.
+     *
      * @param  list<int>  $optRBs
      * @param  list<int>  $optWRs
      * @param  Collection<int, Player>  $players
@@ -319,8 +323,7 @@ class OptimalLineup
         ?int $optTE,
         ?int $optRWT,
         Collection $players,
-        array $kickoffsByFranchiseId,
-        string $weekRankCol
+        array $kickoffsByFranchiseId
     ): array {
         $skill = [
             'RB' => $optRBs,
@@ -348,7 +351,7 @@ class OptimalLineup
             return [$optRBs, $optWRs, $optTE, $optRWT];
         }
 
-        $flexId = self::latestPlayerId($skill[$surplusPos], $players, $kickoffsByFranchiseId, $weekRankCol);
+        $flexId = self::latestKickoffId($skill[$surplusPos], $players, $kickoffsByFranchiseId);
         if ($flexId === null || $flexId === $optRWT) {
             return [$optRBs, $optWRs, $optTE, $optRWT];
         }
@@ -359,7 +362,6 @@ class OptimalLineup
             return [$optRBs, $optWRs, $optTE, $optRWT];
         }
 
-        // Swap only with FLEX. Leave RB1/RB2/WR1/WR2/WR3/TE order untouched.
         foreach ($optRBs as $i => $id) {
             if ($id === $flexId) {
                 $optRBs[$i] = $optRWT;
@@ -396,35 +398,26 @@ class OptimalLineup
     }
 
     /**
+     * Latest kickoff in the group. Ties keep the first id (rank-lineup order).
+     *
      * @param  list<int>  $ids
      * @param  Collection<int, Player>  $players
      * @param  array<int, CarbonImmutable>  $kickoffsByFranchiseId
      */
-    private static function latestPlayerId(
+    private static function latestKickoffId(
         array $ids,
         Collection $players,
-        array $kickoffsByFranchiseId,
-        string $weekRankCol
+        array $kickoffsByFranchiseId
     ): ?int {
         $bestId = null;
         $bestKickoff = null;
-        $bestRank = null;
 
         foreach ($ids as $id) {
-            $player = $players->get($id);
-            $franchiseId = $player?->irl_franchise_id;
-            $kickoff = $franchiseId !== null ? ($kickoffsByFranchiseId[$franchiseId] ?? null) : null;
-            $rank = $player?->{$weekRankCol} ?? 999;
-
-            $isLater = $bestId === null
-                || ($kickoff !== null && ($bestKickoff === null || $kickoff > $bestKickoff))
-                || ($kickoff !== null && $bestKickoff !== null && $kickoff->equalTo($bestKickoff) && $rank > $bestRank)
-                || ($kickoff === null && $bestKickoff === null && $rank > $bestRank);
-
-            if ($isLater) {
+            $kickoff = self::playerKickoff($players->get($id), $kickoffsByFranchiseId);
+            if ($bestId === null
+                || ($kickoff !== null && ($bestKickoff === null || $kickoff->greaterThan($bestKickoff)))) {
                 $bestId = $id;
                 $bestKickoff = $kickoff;
-                $bestRank = $rank;
             }
         }
 
@@ -432,8 +425,8 @@ class OptimalLineup
     }
 
     /**
-     * Keep the current FLEX if they are already an optimal starter and nobody
-     * else in the set kicks off later. Same-time WR/FLEX reshuffles are noise.
+     * Same-time FLEX/WR (or RB) reshuffles only. Never keep a WR at FLEX when
+     * the extra starter is an RB — that is what put RBs in WR slots.
      *
      * @param  array{positions: array<int, string>, starter_ids: list<int>}  $assigned
      * @param  array<int, string>  $currentPosOf
@@ -441,7 +434,7 @@ class OptimalLineup
      * @param  array<int, CarbonImmutable>  $kickoffsByFranchiseId
      * @return array{positions: array<int, string>, starter_ids: list<int>}
      */
-    private static function keepCurrentFlexIfNotLater(
+    private static function keepCurrentFlexIfSameSurplus(
         array $assigned,
         array $currentPosOf,
         Collection $players,
@@ -466,6 +459,12 @@ class OptimalLineup
             return $assigned;
         }
 
+        $optFlexPos = self::skillPosition($players->get($optFlexId));
+        $currentFlexPos = self::skillPosition($players->get($currentFlexId));
+        if ($optFlexPos === null || $optFlexPos !== $currentFlexPos) {
+            return $assigned;
+        }
+
         $optKickoff = self::playerKickoff($players->get($optFlexId), $kickoffsByFranchiseId);
         $currentKickoff = self::playerKickoff($players->get($currentFlexId), $kickoffsByFranchiseId);
         if ($optKickoff !== null && ($currentKickoff === null || $optKickoff->greaterThan($currentKickoff))) {
@@ -473,11 +472,31 @@ class OptimalLineup
         }
 
         $slotForCurrentFlex = $assigned['positions'][$currentFlexId];
+        if (!self::canPlaySlot($players->get($optFlexId), $slotForCurrentFlex)) {
+            return $assigned;
+        }
+
         $assigned['positions'][$currentFlexId] = 'FLEX';
         $assigned['positions'][$optFlexId] = $slotForCurrentFlex;
         $assigned['starter_ids'] = array_keys($assigned['positions']);
 
         return $assigned;
+    }
+
+    private static function canPlaySlot(?Player $player, string $slot): bool
+    {
+        if (!$player) {
+            return false;
+        }
+
+        $positions = $player->positions ?? [];
+        if ($slot === 'FLEX' || $slot === 'RWT') {
+            return (bool) array_intersect(['RB', 'WR', 'TE'], $positions);
+        }
+
+        $need = preg_replace('/\d+$/', '', $slot);
+
+        return $need !== '' && in_array($need, $positions, true);
     }
 
     private static function playerKickoff(?Player $player, array $kickoffsByFranchiseId): ?CarbonImmutable

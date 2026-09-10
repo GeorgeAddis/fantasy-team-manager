@@ -27,6 +27,7 @@ class Player extends Model
         'waiver_rank_non_ppr',
         'waiver_rank_overall_non_ppr',
         'do_not_roster',
+        'hide_from_fa_alerts',
     ];
 
     protected function casts(): array
@@ -46,6 +47,7 @@ class Player extends Model
             'waiver_rank_non_ppr' => 'integer',
             'waiver_rank_overall_non_ppr' => 'integer',
             'do_not_roster' => 'boolean',
+            'hide_from_fa_alerts' => 'boolean',
         ];
     }
 

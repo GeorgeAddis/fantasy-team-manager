@@ -39,6 +39,9 @@ Route::prefix('v1')->group(function () {
     Route::post('defense-week-ranks/copy-from-week-rankings', [DefenseWeekRankController::class, 'copyFromWeekRankings']);
     Route::get('defense-week-ranks', [DefenseWeekRankController::class, 'index']);
     Route::put('defense-week-ranks', [DefenseWeekRankController::class, 'update']);
+    Route::get('players/fa-alert-hidden', [PlayerController::class, 'faAlertHiddenList']);
+    Route::post('players/fa-alert-hidden', [PlayerController::class, 'faAlertHiddenAdd']);
+    Route::delete('players/{player}/fa-alert-hidden', [PlayerController::class, 'faAlertHiddenRemove']);
     Route::get('players/do-not-roster', [PlayerController::class, 'doNotRosterList']);
     Route::post('players/do-not-roster', [PlayerController::class, 'doNotRosterAdd']);
     Route::delete('players/{player}/do-not-roster', [PlayerController::class, 'doNotRosterRemove']);

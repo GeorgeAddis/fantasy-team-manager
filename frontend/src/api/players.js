@@ -87,6 +87,21 @@ export function importWaiverRankings(data, type, ppr = true) {
   })
 }
 
+export function listFaAlertHidden() {
+  return apiFetch(`${path}/fa-alert-hidden`)
+}
+
+export function addFaAlertHidden(data) {
+  return apiFetch(`${path}/fa-alert-hidden`, {
+    method: 'POST',
+    body: { data },
+  })
+}
+
+export function removeFaAlertHidden(playerId) {
+  return apiFetch(`${path}/${playerId}/fa-alert-hidden`, { method: 'DELETE' })
+}
+
 export function listDoNotRoster() {
   return apiFetch(`${path}/do-not-roster`)
 }

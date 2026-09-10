@@ -119,6 +119,51 @@ export function usePlayerExposure(params = {}, options = {}) {
   })
 }
 
+const FA_ALERTS_QUERY_KEY = [...queryKeys.teams.all, 'free-agent-alerts']
+
+export function useFaAlertHiddenList() {
+  return useQuery({
+    queryKey: queryKeys.players.faAlertHidden,
+    queryFn: () => api.listFaAlertHidden(),
+  })
+}
+
+export function useAddFaAlertHidden() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ data }) => api.addFaAlertHidden(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.players.faAlertHidden })
+      qc.invalidateQueries({ queryKey: FA_ALERTS_QUERY_KEY })
+    },
+  })
+}
+
+export function useRemoveFaAlertHidden() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (playerId) => api.removeFaAlertHidden(playerId),
+    onMutate: async (playerId) => {
+      await qc.cancelQueries({ queryKey: queryKeys.players.faAlertHidden })
+      const prev = qc.getQueryData(queryKeys.players.faAlertHidden)
+      if (prev?.data) {
+        qc.setQueryData(queryKeys.players.faAlertHidden, {
+          ...prev,
+          data: prev.data.filter((p) => p.id !== playerId),
+        })
+      }
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.players.faAlertHidden, ctx.prev)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.players.faAlertHidden })
+      qc.invalidateQueries({ queryKey: FA_ALERTS_QUERY_KEY })
+    },
+  })
+}
+
 export function useDoNotRosterList() {
   return useQuery({
     queryKey: queryKeys.players.doNotRoster,

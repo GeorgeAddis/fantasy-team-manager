@@ -31,6 +31,7 @@ class PlayerResource extends JsonResource
             'waiver_rank_non_ppr' => $this->waiver_rank_non_ppr,
             'waiver_rank_overall_non_ppr' => $this->waiver_rank_overall_non_ppr,
             'do_not_roster' => $this->do_not_roster,
+            'hide_from_fa_alerts' => $this->hide_from_fa_alerts,
             'positions' => $this->positions ?? [],
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),

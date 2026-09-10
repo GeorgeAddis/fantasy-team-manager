@@ -34,6 +34,7 @@ export const queryKeys = {
     exposure: (params = {}) => ['players', 'exposure', params],
     doNotRoster: ['players', 'doNotRoster'],
     doNotRosterTeams: ['players', 'doNotRosterTeams'],
+    faAlertHidden: ['players', 'faAlertHidden'],
   },
   settings: {
     all: ['settings'],

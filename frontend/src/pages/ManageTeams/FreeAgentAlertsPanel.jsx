@@ -1,11 +1,17 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Box,
+  Button,
   CircularProgress,
   Typography,
 } from '@mui/material'
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
+import PositionToggle from '@/components/PositionToggle'
 import RosterDialog from '@/components/RosterDialog'
 import { useTeamFreeAgentAlerts } from '@/hooks/useTeams'
+import HiddenPlayersPanel from './HiddenPlayersPanel'
+
+const WORSE_FILTERS = ['Better', '10', '20', '30', '40', '50', 'Any']
 
 const HEADER_SX = {
   fontWeight: 700,
@@ -25,7 +31,7 @@ const COL_SX = {
   fontFamily: 'monospace',
 }
 
-const GRID_COLS = '1fr repeat(5, 72px)'
+const GRID_COLS = 'minmax(0, 1.15fr) 48px 48px 56px 40px 64px minmax(0, 1.15fr) 48px 56px 40px'
 
 function posPrefix(positions) {
   const pos = positions?.[0] ?? ''
@@ -46,16 +52,65 @@ function statusLabel(status) {
   return status === 'WW' ? 'Waivers' : 'FA'
 }
 
+function compareRoleLabel(role) {
+  return role === 'worst' ? 'Worst' : 'Starter'
+}
+
+function seasonRankValue(rank) {
+  if (rank == null || rank <= 0 || rank >= 999) return 10000
+  return rank
+}
+
+function passesWorseFilter(player, filter) {
+  if (filter === 'Any') return true
+  if (!player.compare) return true
+
+  const worseBy = seasonRankValue(player.season_rank) - seasonRankValue(player.compare.season_rank)
+  if (filter === 'Better') return worseBy < 0
+  return worseBy <= Number(filter)
+}
+
 export default function FreeAgentAlertsPanel() {
   const { data, isLoading, isError, error } = useTeamFreeAgentAlerts()
   const [rosterTarget, setRosterTarget] = useState(null)
-  const teams = data?.data ?? []
+  const [showHidden, setShowHidden] = useState(false)
+  const [worseFilter, setWorseFilter] = useState('Better')
+  const teams = useMemo(() => {
+    return (data?.data ?? [])
+      .map((team) => ({
+        ...team,
+        players: (team.players ?? []).filter((player) => passesWorseFilter(player, worseFilter)),
+      }))
+      .filter((team) => team.players.length > 0)
+  }, [data, worseFilter])
+
+  if (showHidden) {
+    return <HiddenPlayersPanel onBack={() => setShowHidden(false)} />
+  }
 
   return (
     <Box>
-      <Typography variant="h6" fontWeight={700} sx={{ mb: 2.5, color: 'text.primary' }}>
-        Free Agent Alerts
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5, gap: 2, flexWrap: 'wrap' }}>
+        <Typography variant="h6" fontWeight={700} sx={{ color: 'text.primary' }}>
+          Free Agent Alerts
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+          <PositionToggle
+            value={worseFilter}
+            onChange={setWorseFilter}
+            positions={WORSE_FILTERS}
+          />
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<VisibilityOffIcon />}
+            onClick={() => setShowHidden(true)}
+            sx={{ textTransform: 'none' }}
+          >
+            Hidden Players
+          </Button>
+        </Box>
+      </Box>
 
       {isLoading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', pt: 6 }}>
@@ -71,7 +126,9 @@ export default function FreeAgentAlertsPanel() {
 
       {!isLoading && !isError && teams.length === 0 && (
         <Typography color="text.secondary" sx={{ mt: 3 }}>
-          No teams have a top-150 player available.
+          {data?.data?.length
+            ? 'No players match this filter.'
+            : 'No teams have a top-200 player available.'}
         </Typography>
       )}
 
@@ -116,47 +173,82 @@ export default function FreeAgentAlertsPanel() {
               <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>SPos</Typography>
               <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Bye</Typography>
               <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Status</Typography>
+              <Typography sx={{ ...HEADER_SX, pl: 1.5 }}>Yours</Typography>
+              <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>SZN</Typography>
+              <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>SPos</Typography>
+              <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Bye</Typography>
             </Box>
 
-            {team.players.map((player) => (
-              <Box
-                key={player.id}
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: GRID_COLS,
-                  gap: 0.5,
-                  px: 1.5,
-                  py: 0.5,
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  alignItems: 'center',
-                }}
-              >
-                <Typography variant="body2" sx={CELL_SX}>{player.name}</Typography>
-                <Typography variant="body2" sx={{ ...CELL_SX, ...COL_SX, color: 'text.secondary' }}>
-                  {(player.positions ?? []).join('/')}
-                </Typography>
-                <Typography variant="caption" sx={{ ...COL_SX, color: '#fff' }}>
-                  {formatRank(player.season_rank)}
-                </Typography>
-                <Typography variant="caption" sx={{ ...COL_SX, color: 'text.secondary' }}>
-                  {formatPosRank(player.positions, player.season_position_rank)}
-                </Typography>
-                <Typography variant="caption" sx={{ ...COL_SX, color: 'text.secondary' }}>
-                  {player.bye_week ?? '—'}
-                </Typography>
-                <Typography
-                  variant="caption"
+            {team.players.map((player) => {
+              const compare = player.compare
+              return (
+                <Box
+                  key={player.id}
                   sx={{
-                    ...COL_SX,
-                    fontWeight: 700,
-                    color: player.status === 'WW' ? 'warning.main' : 'text.primary',
+                    display: 'grid',
+                    gridTemplateColumns: GRID_COLS,
+                    gap: 0.5,
+                    px: 1.5,
+                    py: 0.5,
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    alignItems: 'center',
                   }}
                 >
-                  {statusLabel(player.status)}
-                </Typography>
-              </Box>
-            ))}
+                  <Typography variant="body2" sx={CELL_SX}>{player.name}</Typography>
+                  <Typography variant="body2" sx={{ ...CELL_SX, ...COL_SX, color: 'text.secondary' }}>
+                    {(player.positions ?? []).join('/')}
+                  </Typography>
+                  <Typography variant="caption" sx={{ ...COL_SX, color: '#fff' }}>
+                    {formatRank(player.season_rank)}
+                  </Typography>
+                  <Typography variant="caption" sx={{ ...COL_SX, color: 'text.secondary' }}>
+                    {formatPosRank(player.positions, player.season_position_rank)}
+                  </Typography>
+                  <Typography variant="caption" sx={{ ...COL_SX, color: 'text.secondary' }}>
+                    {player.bye_week ?? '—'}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      ...COL_SX,
+                      fontWeight: 700,
+                      color: player.status === 'WW' ? 'warning.main' : 'success.main',
+                    }}
+                  >
+                    {statusLabel(player.status)}
+                  </Typography>
+                  <Box
+                    sx={{
+                      pl: 1.5,
+                      borderLeft: '1px solid',
+                      borderColor: 'divider',
+                      minWidth: 0,
+                    }}
+                  >
+                    {compare ? (
+                      <>
+                        <Typography variant="body2" sx={CELL_SX}>{compare.name}</Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
+                          {compareRoleLabel(compare.role)}
+                        </Typography>
+                      </>
+                    ) : (
+                      <Typography variant="body2" sx={{ ...CELL_SX, color: 'text.secondary' }}>—</Typography>
+                    )}
+                  </Box>
+                  <Typography variant="caption" sx={{ ...COL_SX, color: compare ? '#fff' : 'text.secondary' }}>
+                    {compare ? formatRank(compare.season_rank) : '—'}
+                  </Typography>
+                  <Typography variant="caption" sx={{ ...COL_SX, color: 'text.secondary' }}>
+                    {compare ? formatPosRank(compare.positions, compare.season_position_rank) : '—'}
+                  </Typography>
+                  <Typography variant="caption" sx={{ ...COL_SX, color: 'text.secondary' }}>
+                    {compare?.bye_week ?? '—'}
+                  </Typography>
+                </Box>
+              )
+            })}
           </Box>
         </Box>
       ))}

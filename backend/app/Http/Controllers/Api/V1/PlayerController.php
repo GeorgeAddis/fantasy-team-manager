@@ -790,53 +790,110 @@ class PlayerController extends Controller
             : [];
 
         $updated = 0;
+        $cleared = 0;
         $notFound = [];
 
-        foreach ($parsed as $i => $row) {
-            if (!$row['player']) {
-                $notFound[] = ['rank' => $row['file_rank'], 'name' => $row['name']];
-                continue;
-            }
+        DB::transaction(function () use (
+            $parsed,
+            $assignments,
+            $isSflex,
+            $isRwt,
+            $type,
+            $period,
+            $cols,
+            &$updated,
+            &$cleared,
+            &$notFound
+        ) {
+            $cleared = $this->clearPasteImportRanks($type, $period, $cols);
 
-            if ($isSflex) {
-                $assignment = $assignments[$i] ?? null;
-                if (($assignment['kind'] ?? null) === null) {
+            foreach ($parsed as $i => $row) {
+                if (!$row['player']) {
+                    $notFound[] = ['rank' => $row['file_rank'], 'name' => $row['name']];
                     continue;
                 }
 
-                if ($assignment['kind'] === 'QB') {
-                    $fields = $period === 'week'
-                        ? [$cols['week_position_rank'] => $assignment['position_rank']]
-                        : [$cols['season_position_rank'] => $assignment['position_rank']];
-                } else {
-                    $posRank = $assignment['position_rank'] ?? 999;
-                    $fields = $period === 'week'
-                        ? [$cols['week_rank'] => $assignment['overall_rank'], $cols['week_position_rank'] => $posRank]
-                        : [$cols['season_rank'] => $assignment['overall_rank'], $cols['season_position_rank'] => $posRank];
-                }
-            } elseif ($isRwt) {
-                $posRank = SflexRankingSplit::parseSkillPosRank($row['pos_raw']) ?? 999;
-                $fields = $period === 'week'
-                    ? [$cols['week_rank'] => $row['file_rank'], $cols['week_position_rank'] => $posRank]
-                    : [$cols['season_rank'] => $row['file_rank'], $cols['season_position_rank'] => $posRank];
-            } else {
-                $fields = $period === 'week'
-                    ? [$cols['week_position_rank'] => $row['file_rank']]
-                    : [$cols['season_position_rank'] => $row['file_rank']];
-                if (RankingFields::isScoringIndependent($row['player']->positions ?? [], $type)) {
-                    $fields = RankingFields::mirrorScoringIndependent($fields);
-                }
-            }
+                if ($isSflex) {
+                    $assignment = $assignments[$i] ?? null;
+                    if (($assignment['kind'] ?? null) === null) {
+                        continue;
+                    }
 
-            Player::query()->where('id', $row['player']->id)->update($fields);
-            $updated++;
-        }
+                    if ($assignment['kind'] === 'QB') {
+                        $fields = $period === 'week'
+                            ? [$cols['week_position_rank'] => $assignment['position_rank']]
+                            : [$cols['season_position_rank'] => $assignment['position_rank']];
+                    } else {
+                        $posRank = $assignment['position_rank'] ?? 999;
+                        $fields = $period === 'week'
+                            ? [$cols['week_rank'] => $assignment['overall_rank'], $cols['week_position_rank'] => $posRank]
+                            : [$cols['season_rank'] => $assignment['overall_rank'], $cols['season_position_rank'] => $posRank];
+                    }
+                } elseif ($isRwt) {
+                    $posRank = SflexRankingSplit::parseSkillPosRank($row['pos_raw']) ?? 999;
+                    $fields = $period === 'week'
+                        ? [$cols['week_rank'] => $row['file_rank'], $cols['week_position_rank'] => $posRank]
+                        : [$cols['season_rank'] => $row['file_rank'], $cols['season_position_rank'] => $posRank];
+                } else {
+                    $fields = $period === 'week'
+                        ? [$cols['week_position_rank'] => $row['file_rank']]
+                        : [$cols['season_position_rank'] => $row['file_rank']];
+                    if (RankingFields::isScoringIndependent($row['player']->positions ?? [], $type)) {
+                        $fields = RankingFields::mirrorScoringIndependent($fields);
+                    }
+                }
+
+                Player::query()->where('id', $row['player']->id)->update($fields);
+                $updated++;
+            }
+        });
 
         return response()->json([
             'updated' => $updated,
+            'cleared' => $cleared,
             'not_found' => $notFound,
             'total_lines' => count($lines),
         ]);
+    }
+
+    /**
+     * Reset ranks this paste owns so omitted players (injuries, etc.) are unranked.
+     */
+    private function clearPasteImportRanks(string $type, string $period, array $cols): int
+    {
+        $isWeek = $period === 'week';
+
+        if ($type === 'SFLEX') {
+            $fields = $isWeek
+                ? [$cols['week_rank'] => 999, $cols['week_position_rank'] => 999]
+                : [$cols['season_rank'] => 999, $cols['season_position_rank'] => 999];
+            $positions = ['QB', 'RB', 'WR', 'TE'];
+        } elseif ($type === 'RWT') {
+            $fields = $isWeek
+                ? [$cols['week_rank'] => 999, $cols['week_position_rank'] => 999]
+                : [$cols['season_rank'] => 999, $cols['season_position_rank'] => 999];
+            $positions = ['RB', 'WR', 'TE'];
+        } else {
+            $fields = $isWeek
+                ? [$cols['week_position_rank'] => 999]
+                : [$cols['season_position_rank'] => 999];
+            $positions = [$type];
+            if (RankingFields::isScoringIndependent([], $type)) {
+                $fields = RankingFields::mirrorScoringIndependent($fields);
+            }
+        }
+
+        $query = Player::query()->where(function ($q) use ($positions) {
+            foreach ($positions as $i => $pos) {
+                if ($i === 0) {
+                    $q->whereJsonContains('positions', $pos);
+                } else {
+                    $q->orWhereJsonContains('positions', $pos);
+                }
+            }
+        });
+
+        return $query->update($fields);
     }
 
     /**
@@ -1467,6 +1524,105 @@ class PlayerController extends Controller
             'D/ST' => 'DST',
         ];
         return $map[strtoupper(trim($pos))] ?? null;
+    }
+
+    /**
+     * Players hidden from Free Agent Alerts (not week-specific).
+     */
+    public function faAlertHiddenList(): JsonResponse
+    {
+        $players = Player::query()
+            ->where('hide_from_fa_alerts', true)
+            ->where(function ($q) {
+                $q->whereJsonContains('positions', 'QB')
+                    ->orWhereJsonContains('positions', 'RB')
+                    ->orWhereJsonContains('positions', 'WR')
+                    ->orWhereJsonContains('positions', 'TE');
+            })
+            ->with('irlFranchise')
+            ->orderBy('season_rank')
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'positions' => $p->positions ?? [],
+                'season_rank' => $p->season_rank,
+                'season_position_rank' => $p->season_position_rank,
+                'bye_week' => $p->irlFranchise?->bye_week,
+            ]);
+
+        return response()->json(['data' => $players]);
+    }
+
+    /**
+     * Hide players from FA alerts by pasted names (one per line, or comma-separated).
+     */
+    public function faAlertHiddenAdd(Request $request): JsonResponse
+    {
+        $request->validate([
+            'data' => ['required', 'string', 'min:1'],
+        ]);
+
+        $chunks = preg_split('/[\r\n,]+/', $request->input('data')) ?: [];
+        $lines = array_values(array_filter(
+            array_map(fn ($l) => preg_replace('/^\d+[\.\)]\s*/', '', trim($l)), $chunks),
+            fn ($l) => $l !== ''
+        ));
+
+        if ($lines === []) {
+            return response()->json(['message' => 'No data provided.'], 422);
+        }
+
+        $allPlayers = Player::all();
+        $playerByName = [];
+        foreach ($allPlayers as $p) {
+            $playerByName[$this->normalizePlayerName($p->name)] = $p;
+            if ($p->alternate_name) {
+                $playerByName[$this->normalizePlayerName($p->alternate_name)] = $p;
+            }
+        }
+        $dstLookup = DefenseNameLookup::buildPlayerLookup();
+
+        $updated = 0;
+        $notFound = [];
+
+        foreach ($lines as $idx => $name) {
+            $normalized = $this->normalizePlayerName($name);
+            $player = $playerByName[$normalized]
+                ?? DefenseNameLookup::findPlayer($name, $dstLookup);
+
+            if (!$player) {
+                $notFound[] = ['rank' => $idx + 1, 'name' => $name];
+                continue;
+            }
+
+            if (array_intersect($player->positions ?? [], ['K', 'DST']) !== []) {
+                if ($player->hide_from_fa_alerts) {
+                    $player->update(['hide_from_fa_alerts' => false]);
+                }
+                $notFound[] = ['rank' => $idx + 1, 'name' => $name];
+                continue;
+            }
+
+            if (!$player->hide_from_fa_alerts) {
+                $player->update(['hide_from_fa_alerts' => true]);
+            }
+            $updated++;
+        }
+
+        return response()->json([
+            'updated' => $updated,
+            'not_found' => $notFound,
+            'total_lines' => count($lines),
+        ]);
+    }
+
+    public function faAlertHiddenRemove(Player $player): JsonResponse
+    {
+        $player->update(['hide_from_fa_alerts' => false]);
+
+        return response()->json(['success' => true]);
     }
 
     /**

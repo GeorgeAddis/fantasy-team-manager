@@ -476,15 +476,16 @@ class TeamController extends Controller
     }
 
     /**
-     * Available top-150 season-ranked players on each of my non-bestball teams.
+     * Available top-200 season-ranked players on each of my non-bestball teams.
      * FA and WW both count as available; status is included when known.
+     * Players flagged hide_from_fa_alerts are omitted.
      */
     public function freeAgentAlerts(): JsonResponse
     {
         $myTeams = Team::query()
             ->where('my_team', true)
             ->whereHas('league', fn ($q) => $q->where('bestball', false))
-            ->with(['league.teams'])
+            ->with(['league.teams', 'lineupSlots.player.irlFranchise'])
             ->get()
             ->sortByDesc(fn (Team $team) => $team->league_id)
             ->values();
@@ -508,15 +509,25 @@ class TeamController extends Controller
                 ->where('league_id', $league->id)
                 ->pluck('status', 'player_id');
 
+            $compareByPos = $this->faAlertCompareByPosition($team, $cols);
+
             $players = Player::with('irlFranchise')
                 ->whereNotIn('id', $rosteredIds)
+                ->where('hide_from_fa_alerts', false)
+                ->where(function ($q) {
+                    $q->whereJsonContains('positions', 'QB')
+                        ->orWhereJsonContains('positions', 'RB')
+                        ->orWhereJsonContains('positions', 'WR')
+                        ->orWhereJsonContains('positions', 'TE');
+                })
                 ->where($seasonCol, '>=', 1)
-                ->where($seasonCol, '<=', 150)
+                ->where($seasonCol, '<=', 200)
                 ->orderBy($seasonCol)
                 ->orderBy('name')
                 ->get()
-                ->map(function (Player $p) use ($league, $statuses) {
+                ->map(function (Player $p) use ($league, $statuses, $compareByPos) {
                     $status = $statuses[$p->id] ?? 'FA';
+                    $skill = $this->skillPosition($p->positions ?? []);
 
                     return array_merge([
                         'id' => $p->id,
@@ -525,6 +536,7 @@ class TeamController extends Controller
                         'irl_franchise_abbr' => $p->irlFranchise?->abbreviated_name,
                         'bye_week' => $p->irlFranchise?->bye_week,
                         'status' => $status === 'WW' ? 'WW' : 'FA',
+                        'compare' => $skill ? ($compareByPos[$skill] ?? null) : null,
                     ], RankingFields::valuesFor($p, $league));
                 })
                 ->values();
@@ -543,6 +555,86 @@ class TeamController extends Controller
         })->filter()->values();
 
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * First skill position on a player (QB / RB / WR / TE).
+     */
+    private function skillPosition(array $positions): ?string
+    {
+        foreach (['QB', 'RB', 'WR', 'TE'] as $pos) {
+            if (in_array($pos, $positions, true)) {
+                return $pos;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Roster comparison for FA alerts: worst QB/RB/WR/TE on the roster,
+     * starters and bench included.
+     *
+     * @return array<string, array<string, mixed>|null>
+     */
+    private function faAlertCompareByPosition(Team $team, array $cols): array
+    {
+        $seasonCol = $cols['season_rank'];
+        $posCol = $cols['season_position_rank'];
+        $groups = ['QB' => [], 'RB' => [], 'WR' => [], 'TE' => []];
+
+        foreach ($team->lineupSlots as $slot) {
+            $player = $slot->player;
+            if ($player === null) {
+                continue;
+            }
+
+            $skill = $this->skillPosition($player->positions ?? []);
+            if ($skill === null) {
+                continue;
+            }
+
+            $groups[$skill][$player->id] = $player;
+        }
+
+        $rankValue = function (Player $player) use ($seasonCol): int {
+            $rank = (int) ($player->{$seasonCol} ?? 0);
+
+            return ($rank <= 0 || $rank >= 999) ? 10000 : $rank;
+        };
+
+        $worst = function (array $players) use ($rankValue): ?Player {
+            $players = array_values($players);
+            if ($players === []) {
+                return null;
+            }
+
+            usort($players, fn (Player $a, Player $b) => $rankValue($b) <=> $rankValue($a));
+
+            return $players[0];
+        };
+
+        $pack = function (?Player $player) use ($seasonCol, $posCol): ?array {
+            if ($player === null) {
+                return null;
+            }
+
+            return [
+                'name' => $player->name,
+                'positions' => $player->positions ?? [],
+                'season_rank' => $player->{$seasonCol},
+                'season_position_rank' => $player->{$posCol},
+                'bye_week' => $player->irlFranchise?->bye_week,
+                'role' => 'worst',
+            ];
+        };
+
+        return [
+            'QB' => $pack($worst($groups['QB'])),
+            'TE' => $pack($worst($groups['TE'])),
+            'RB' => $pack($worst($groups['RB'])),
+            'WR' => $pack($worst($groups['WR'])),
+        ];
     }
 
     /**
