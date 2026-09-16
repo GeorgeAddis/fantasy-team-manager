@@ -116,6 +116,31 @@ export function useFlagWaiverClaims() {
   })
 }
 
+export function useFlagPostWaiverMoves() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => leaguesApi.flagPostWaiverMoves(),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: queryKeys.leagues.all })
+      const listKey = queryKeys.leagues.list({})
+      const prev = qc.getQueryData(listKey)
+      if (prev?.data) {
+        qc.setQueryData(listKey, {
+          ...prev,
+          data: prev.data.map((l) => ({ ...l, requires_post_waiver_moves: true })),
+        })
+      }
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKeys.leagues.list({}), ctx.prev)
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+    },
+  })
+}
+
 export function useFlagRosterMoves() {
   const qc = useQueryClient()
   return useMutation({

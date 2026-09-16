@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class League extends Model
 {
-    protected $fillable = ['name', 'fantrax_id', 'ppr', 'bestball', 'teams_updated_at', 'requires_waiver_claim', 'requires_roster_moves', 'requires_roster_optimised', 'requires_thursday_update', 'requires_pre_season_optimised'];
+    protected $fillable = ['name', 'fantrax_id', 'ppr', 'bestball', 'teams_updated_at', 'requires_waiver_claim', 'requires_post_waiver_moves', 'requires_roster_moves', 'requires_roster_optimised', 'requires_thursday_update', 'requires_pre_season_optimised'];
 
     protected function casts(): array
     {
@@ -16,6 +16,7 @@ class League extends Model
             'bestball' => 'boolean',
             'teams_updated_at' => 'datetime',
             'requires_waiver_claim' => 'boolean',
+            'requires_post_waiver_moves' => 'boolean',
             'requires_roster_moves' => 'boolean',
             'requires_roster_optimised' => 'boolean',
             'requires_thursday_update' => 'boolean',

@@ -56,7 +56,11 @@ function byeRowColor(byeWeek, currentWeek) {
   return undefined
 }
 
-export default function SeasonRankingsExpanded({ leagueId, teamId, currentWeek = 0 }) {
+function statusLabel(status) {
+  return status === 'WW' ? 'Waivers' : 'FA'
+}
+
+export default function SeasonRankingsExpanded({ leagueId, teamId, currentWeek = 0, includeWaivers = false }) {
   const [position, setPosition] = useState('QB')
   const { data, isLoading } = useWaiverBoard(leagueId, teamId)
 
@@ -71,6 +75,7 @@ export default function SeasonRankingsExpanded({ leagueId, teamId, currentWeek =
     const available = (data.available ?? [])
       .filter((p) => matchesPosition(p.positions ?? [], position))
       .filter((p) => p.season_rank != null)
+      .filter((p) => includeWaivers || p.status !== 'WW')
       .sort((a, b) => a.season_rank - b.season_rank)
 
     if (available.length === 0) return myPlayers.sort((a, b) => a.season_rank - b.season_rank)
@@ -97,7 +102,7 @@ export default function SeasonRankingsExpanded({ leagueId, teamId, currentWeek =
     merged.sort((a, b) => a.season_rank - b.season_rank)
 
     return merged
-  }, [data, position])
+  }, [data, position, includeWaivers])
 
   return (
     <Box>
@@ -119,7 +124,7 @@ export default function SeasonRankingsExpanded({ leagueId, teamId, currentWeek =
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: '1fr 40px 55px 40px 55px 35px',
+              gridTemplateColumns: '1fr 40px 55px 40px 55px 35px 56px',
               gap: 0.5,
               px: 1.5,
               py: 0.75,
@@ -134,6 +139,7 @@ export default function SeasonRankingsExpanded({ leagueId, teamId, currentWeek =
             <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Wk</Typography>
             <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>WPos</Typography>
             <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Bye</Typography>
+            <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Status</Typography>
           </Box>
 
           <Box sx={{ maxHeight: 520, overflowY: 'auto' }}>
@@ -146,7 +152,7 @@ export default function SeasonRankingsExpanded({ leagueId, teamId, currentWeek =
                   key={row.id}
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: '1fr 40px 55px 40px 55px 35px',
+                    gridTemplateColumns: '1fr 40px 55px 40px 55px 35px 56px',
                     gap: 0.5,
                     px: 1.5,
                     py: 0.5,
@@ -172,6 +178,19 @@ export default function SeasonRankingsExpanded({ leagueId, teamId, currentWeek =
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace', textAlign: 'right' }}>
                     {row.bye_week ?? '—'}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 700,
+                      fontFamily: 'monospace',
+                      textAlign: 'right',
+                      color: row._mine
+                        ? 'text.secondary'
+                        : row.status === 'WW' ? 'warning.main' : 'success.main',
+                    }}
+                  >
+                    {row._mine ? '—' : statusLabel(row.status)}
                   </Typography>
                 </Box>
               )

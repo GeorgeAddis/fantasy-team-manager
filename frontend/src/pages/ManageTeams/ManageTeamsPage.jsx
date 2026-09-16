@@ -26,7 +26,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import BlockIcon from '@mui/icons-material/Block'
 import ShieldIcon from '@mui/icons-material/Shield'
 import ErrorIcon from '@mui/icons-material/Error'
-import { useLeagueList, useFlagWaiverClaims, useFlagRosterMoves, useFlagRosterOptimisation, useFlagThursdayUpdate, useUpdateLeague, useUpdateAllRosters } from '@/hooks/useLeagues'
+import { useLeagueList, useFlagWaiverClaims, useFlagPostWaiverMoves, useFlagRosterMoves, useFlagRosterOptimisation, useFlagThursdayUpdate, useUpdateLeague, useUpdateAllRosters } from '@/hooks/useLeagues'
 import { useTeamLineupAnalysis, useTeamRosterAddAnalysis, useTeamRoster } from '@/hooks/useTeams'
 import { useSettings } from '@/hooks/useSettings'
 import TeamsTable from './TeamsTable'
@@ -36,6 +36,7 @@ import SeasonRankingsColumn from './SeasonRankingsColumn'
 import WeekRankingsColumn from './WeekRankingsColumn'
 import TopWaiverColumn from './TopWaiverColumn'
 import SeasonRankingsExpanded from './SeasonRankingsExpanded'
+import PositionToggle from '@/components/PositionToggle'
 import HomePanel from './HomePanel'
 import SearchRosterPanel from './SearchRosterPanel'
 import DoNotRosterPanel from './DoNotRosterPanel'
@@ -57,6 +58,23 @@ const POSITION_COLORS = {
   DST: '#90a4ae',
 }
 
+const AVAILABLE_FILTERS = ['FA', 'FA + WW']
+
+function AvailablePoolToggle({ includeWaivers, onChange }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+        Available
+      </Typography>
+      <PositionToggle
+        value={includeWaivers ? 'FA + WW' : 'FA'}
+        onChange={(next) => onChange(next === 'FA + WW')}
+        positions={AVAILABLE_FILTERS}
+      />
+    </Box>
+  )
+}
+
 const FILTERS = [
   { value: 'home', label: 'Home', icon: HomeIcon },
   { value: 'all', label: 'All Teams', icon: GroupsIcon },
@@ -65,8 +83,9 @@ const FILTERS = [
   { value: 'require-lineup-change', label: 'Require Lineup Change', icon: SyncAltIcon },
   { value: 'require-roster-moves', label: 'Require Roster Moves', icon: PersonAddIcon },
   { value: 'roster-optimisation', label: 'Roster Optimisation', icon: TuneIcon },
-  { value: 'thursday-update', label: 'Thursday Team Updates', icon: CalendarTodayIcon },
   { value: 'require-waiver-claims', label: 'Require Waiver Claims', icon: SyncAltIcon },
+  { value: 'post-waiver-moves', label: 'Post Waiver Moves', icon: PersonAddIcon },
+  { value: 'thursday-update', label: 'Thursday Team Updates', icon: CalendarTodayIcon },
   { value: 'defense-management', label: 'Defense Management', icon: ShieldIcon },
   { value: 'do-not-roster', label: 'Do Not Roster', icon: BlockIcon },
   { value: 'search-player', label: 'Search for Player', icon: PersonSearchIcon },
@@ -79,10 +98,15 @@ export default function ManageTeamsPage() {
   const [confirmRosterMovesOpen, setConfirmRosterMovesOpen] = useState(false)
   const [confirmRosterOptOpen, setConfirmRosterOptOpen] = useState(false)
   const [claimsTarget, setClaimsTarget] = useState(null)
+  const [postWaiverTarget, setPostWaiverTarget] = useState(null)
   const [addsTarget, setAddsTarget] = useState(null)
   const [optimiseTarget, setOptimiseTarget] = useState(null)
   const [thursdayTarget, setThursdayTarget] = useState(null)
   const [confirmThursdayOpen, setConfirmThursdayOpen] = useState(false)
+  const [confirmPostWaiverOpen, setConfirmPostWaiverOpen] = useState(false)
+  const [includeWaivers, setIncludeWaivers] = useState(false)
+  const [playerSearchInput, setPlayerSearchInput] = useState('')
+  const [playerSearchQuery, setPlayerSearchQuery] = useState('')
   const { data: leagueData, isLoading: leaguesLoading } = useLeagueList()
   const { data: analysisData, isLoading: analysisLoading } = useTeamLineupAnalysis()
   const { data: rosterAddData, isLoading: rosterAddLoading } = useTeamRosterAddAnalysis({ availability: 'FA' })
@@ -92,6 +116,7 @@ export default function ManageTeamsPage() {
   )
   const { data: settingsData } = useSettings()
   const flagMutation = useFlagWaiverClaims()
+  const flagPostWaiverMutation = useFlagPostWaiverMoves()
   const flagRosterMovesMutation = useFlagRosterMoves()
   const flagRosterOptMutation = useFlagRosterOptimisation()
   const flagThursdayMutation = useFlagThursdayUpdate()
@@ -101,6 +126,7 @@ export default function ManageTeamsPage() {
   const activeRosterId = addsTarget?.myTeam?.id
     ?? optimiseTarget?.myTeam?.id
     ?? claimsTarget?.myTeam?.id
+    ?? postWaiverTarget?.myTeam?.id
     ?? (thursdayTarget?.step >= 1 ? thursdayTarget?.myTeam?.id : null)
   const { data: rosterPanelData, isLoading: rosterPanelLoading } = useTeamRoster(
     activeRosterId,
@@ -162,6 +188,9 @@ export default function ManageTeamsPage() {
     if (filter === 'require-waiver-claims') {
       return rows.filter((r) => r.league.requires_waiver_claim === true)
     }
+    if (filter === 'post-waiver-moves') {
+      return rows.filter((r) => r.league.requires_post_waiver_moves === true)
+    }
     if (filter === 'roster-optimisation') {
       return rows.filter((r) => r.league.requires_roster_optimised === true)
     }
@@ -175,6 +204,7 @@ export default function ManageTeamsPage() {
   function handleFilterChange(_, next) {
     if (!next) return
     setClaimsTarget(null)
+    setPostWaiverTarget(null)
     setAddsTarget(null)
     setOptimiseTarget(null)
     setThursdayTarget(null)
@@ -203,17 +233,33 @@ export default function ManageTeamsPage() {
     setClaimsTarget({ league, myTeam })
   }
 
+  function handleMakePostWaiverMoves({ league, myTeam }) {
+    setPostWaiverTarget({ league, myTeam })
+  }
+
   function handleMakeAdds({ league, myTeam, rosterAdd }) {
     const suggestedAdds = (rosterAdd?.suggested_adds ?? []).filter((a) => a.source === 'FA')
     setAddsTarget({ league, myTeam, suggestedAdds })
   }
 
-  function handleOptimise({ league, myTeam }) {
-    setOptimiseTarget({ league, myTeam })
+  function handleOptimise({ league, myTeam, from = 'roster-optimisation' }) {
+    setOptimiseTarget({ league, myTeam, from })
+  }
+
+  function handleSearchOptimise(row) {
+    const match = rows.find((r) => r.league.id === row.league_id)
+    const league = match?.league ?? { id: row.league_id, name: row.league_name }
+    const myTeam = match?.myTeam ?? { id: row.team_id, name: row.team_name }
+    if (!league?.id || !myTeam?.id) return
+    setOptimiseTarget({ league, myTeam, from: 'search-player' })
   }
 
   function handleBack() {
     setClaimsTarget(null)
+  }
+
+  function handlePostWaiverBack() {
+    setPostWaiverTarget(null)
   }
 
   function handleAddsBack() {
@@ -228,6 +274,13 @@ export default function ManageTeamsPage() {
     updateLeagueMutation.mutate(
       { id: claimsTarget.league.id, requires_waiver_claim: false },
       { onSuccess: () => setClaimsTarget(null) },
+    )
+  }
+
+  function handleCompletePostWaiverMoves() {
+    updateLeagueMutation.mutate(
+      { id: postWaiverTarget.league.id, requires_post_waiver_moves: false },
+      { onSuccess: () => setPostWaiverTarget(null) },
     )
   }
 
@@ -279,14 +332,22 @@ export default function ManageTeamsPage() {
     })
   }
 
+  function handleFlagPostWaiverConfirm() {
+    flagPostWaiverMutation.mutate(undefined, {
+      onSuccess: () => setConfirmPostWaiverOpen(false),
+    })
+  }
+
   const isWaiverView = filter === 'require-waiver-claims'
+  const isPostWaiverView = filter === 'post-waiver-moves'
   const isRosterMovesView = filter === 'require-roster-moves'
   const isRosterOptView = filter === 'roster-optimisation'
   const isThursdayView = filter === 'thursday-update'
   const isAllView = filter === 'all'
   const showMakeClaims = isWaiverView && claimsTarget !== null
+  const showPostWaiver = isPostWaiverView && postWaiverTarget !== null
   const showMakeAdds = isRosterMovesView && addsTarget !== null
-  const showOptimise = isRosterOptView && optimiseTarget !== null
+  const showOptimise = optimiseTarget !== null
   const showThursday = isThursdayView && thursdayTarget !== null
 
   const STARTER_POSITIONS = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'WR3', 'TE', 'RWT', 'K', 'DST']
@@ -446,34 +507,6 @@ export default function ManageTeamsPage() {
   }
 
   function renderContent() {
-    if (filter === 'home') {
-      return <HomePanel />
-    }
-
-    if (filter === 'free-agent-alerts') {
-      return <FreeAgentAlertsPanel />
-    }
-
-    if (filter === 'pre-season-optimise') {
-      return <PreSeasonOptimisePanel />
-    }
-
-    if (filter === 'search-player') {
-      return <SearchRosterPanel key="player" type="player" />
-    }
-
-    if (filter === 'search-franchise') {
-      return <SearchRosterPanel key="franchise" type="franchise" />
-    }
-
-    if (filter === 'defense-management') {
-      return <DefenseManagementPanel />
-    }
-
-    if (filter === 'do-not-roster') {
-      return <DoNotRosterPanel />
-    }
-
     if (showOptimise) {
       return (
         <>
@@ -481,7 +514,8 @@ export default function ManageTeamsPage() {
             <Typography variant="h6" fontWeight={700} sx={{ color: 'text.primary' }}>
               Optimise Roster — {optimiseTarget.league.name}
             </Typography>
-            <Box sx={{ display: 'flex', gap: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <AvailablePoolToggle includeWaivers={includeWaivers} onChange={setIncludeWaivers} />
               <Button
                 variant="outlined"
                 size="small"
@@ -504,18 +538,64 @@ export default function ManageTeamsPage() {
             </Box>
           </Box>
 
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 3 }}>
-            {/* Left: Rest of Season rankings */}
-            <SeasonRankingsExpanded leagueId={optimiseTarget.league.id} teamId={optimiseTarget.myTeam.id} currentWeek={currentWeek} />
-
-            {/* Divider */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto 1fr', gap: 3 }}>
+            <SeasonRankingsExpanded
+              leagueId={optimiseTarget.league.id}
+              teamId={optimiseTarget.myTeam.id}
+              currentWeek={currentWeek}
+              includeWaivers={includeWaivers}
+            />
             <Box sx={{ width: '1px', bgcolor: 'divider' }} />
-
-            {/* Right: Current Roster */}
+            <WeekRankingsColumn
+              leagueId={optimiseTarget.league.id}
+              teamId={optimiseTarget.myTeam.id}
+              currentWeek={currentWeek}
+              includeWaivers={includeWaivers}
+              showStatus
+            />
+            <Box sx={{ width: '1px', bgcolor: 'divider' }} />
             {renderRosterPanel()}
           </Box>
         </>
       )
+    }
+
+    if (filter === 'home') {
+      return <HomePanel />
+    }
+
+    if (filter === 'free-agent-alerts') {
+      return <FreeAgentAlertsPanel />
+    }
+
+    if (filter === 'pre-season-optimise') {
+      return <PreSeasonOptimisePanel />
+    }
+
+    if (filter === 'search-player') {
+      return (
+        <SearchRosterPanel
+          key="player"
+          type="player"
+          input={playerSearchInput}
+          search={playerSearchQuery}
+          onInputChange={setPlayerSearchInput}
+          onSearchChange={setPlayerSearchQuery}
+          onOptimise={handleSearchOptimise}
+        />
+      )
+    }
+
+    if (filter === 'search-franchise') {
+      return <SearchRosterPanel key="franchise" type="franchise" />
+    }
+
+    if (filter === 'defense-management') {
+      return <DefenseManagementPanel />
+    }
+
+    if (filter === 'do-not-roster') {
+      return <DoNotRosterPanel />
     }
 
     if (showThursday) {
@@ -537,7 +617,10 @@ export default function ManageTeamsPage() {
                 Step {step + 1} of 3: {STEP_LABELS[step]}
               </Typography>
             </Box>
-            <Box sx={{ display: 'flex', gap: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              {step === 2 && (
+                <AvailablePoolToggle includeWaivers={includeWaivers} onChange={setIncludeWaivers} />
+              )}
               {step > 0 && (
                 <Button
                   variant="outlined"
@@ -689,8 +772,21 @@ export default function ManageTeamsPage() {
 
           {/* Step 2: Roster Optimisation */}
           {step === 2 && (
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 3 }}>
-              <SeasonRankingsExpanded leagueId={thursdayTarget.league.id} teamId={thursdayTarget.myTeam.id} currentWeek={currentWeek} />
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto 1fr', gap: 3 }}>
+              <SeasonRankingsExpanded
+                leagueId={thursdayTarget.league.id}
+                teamId={thursdayTarget.myTeam.id}
+                currentWeek={currentWeek}
+                includeWaivers={includeWaivers}
+              />
+              <Box sx={{ width: '1px', bgcolor: 'divider' }} />
+              <WeekRankingsColumn
+                leagueId={thursdayTarget.league.id}
+                teamId={thursdayTarget.myTeam.id}
+                currentWeek={currentWeek}
+                includeWaivers={includeWaivers}
+                showStatus
+              />
               <Box sx={{ width: '1px', bgcolor: 'divider' }} />
               {renderRosterPanel()}
             </Box>
@@ -737,6 +833,69 @@ export default function ManageTeamsPage() {
             <WeekRankingsColumn leagueId={claimsTarget.league.id} teamId={claimsTarget.myTeam.id} currentWeek={currentWeek} />
             <Box sx={{ width: '1px', bgcolor: 'divider' }} />
             <TopWaiverColumn leagueId={claimsTarget.league.id} teamId={claimsTarget.myTeam.id} currentWeek={currentWeek} />
+          </Box>
+        </>
+      )
+    }
+
+    if (showPostWaiver) {
+      return (
+        <>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
+            <Box>
+              <Typography variant="h6" fontWeight={700} sx={{ color: 'text.primary' }}>
+                Post Waiver Moves — {postWaiverTarget.league.name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Only actual free agents. Players on waivers are not included.
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<ArrowBackIcon />}
+                onClick={handlePostWaiverBack}
+                sx={{ textTransform: 'none' }}
+              >
+                Back
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<CheckCircleOutlineIcon />}
+                onClick={handleCompletePostWaiverMoves}
+                disabled={updateLeagueMutation.isPending}
+                sx={{ textTransform: 'none' }}
+              >
+                Complete Moves
+              </Button>
+            </Box>
+          </Box>
+
+          <Box sx={{ display: 'grid', gridTemplateColumns: '2fr auto 1fr auto 1fr auto 1fr', gap: 3 }}>
+            {renderRosterPanel()}
+            <Box sx={{ width: '1px', bgcolor: 'divider' }} />
+            <SeasonRankingsColumn
+              leagueId={postWaiverTarget.league.id}
+              teamId={postWaiverTarget.myTeam.id}
+              currentWeek={currentWeek}
+              includeWaivers={false}
+            />
+            <Box sx={{ width: '1px', bgcolor: 'divider' }} />
+            <WeekRankingsColumn
+              leagueId={postWaiverTarget.league.id}
+              teamId={postWaiverTarget.myTeam.id}
+              currentWeek={currentWeek}
+              includeWaivers={false}
+            />
+            <Box sx={{ width: '1px', bgcolor: 'divider' }} />
+            <TopWaiverColumn
+              leagueId={postWaiverTarget.league.id}
+              teamId={postWaiverTarget.myTeam.id}
+              currentWeek={currentWeek}
+              includeWaivers={false}
+            />
           </Box>
         </>
       )
@@ -930,6 +1089,17 @@ export default function ManageTeamsPage() {
               Flag All Leagues
             </Button>
           )}
+          {isPostWaiverView && (
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<FlagIcon />}
+              onClick={() => setConfirmPostWaiverOpen(true)}
+              sx={{ textTransform: 'none' }}
+            >
+              Flag All Leagues
+            </Button>
+          )}
           {isRosterMovesView && (
             <Button
               variant="contained"
@@ -970,6 +1140,7 @@ export default function ManageTeamsPage() {
           isLoading={isLoading}
           variant={filter}
           onMakeClaims={handleMakeClaims}
+          onMakePostWaiverMoves={handleMakePostWaiverMoves}
           onMakeAdds={handleMakeAdds}
           onOptimise={handleOptimise}
           onThursdayUpdate={handleThursdayUpdate}
@@ -1045,6 +1216,17 @@ export default function ManageTeamsPage() {
         onCancel={() => setConfirmOpen(false)}
         onConfirm={handleFlagConfirm}
         isLoading={flagMutation.isPending}
+      />
+
+      <ConfirmDialog
+        open={confirmPostWaiverOpen}
+        title="Flag All Leagues"
+        message="Are you sure you want to flag all leagues as requiring post-waiver moves? This will mark every league so it appears in this list."
+        confirmLabel="Flag All"
+        confirmColor="primary"
+        onCancel={() => setConfirmPostWaiverOpen(false)}
+        onConfirm={handleFlagPostWaiverConfirm}
+        isLoading={flagPostWaiverMutation.isPending}
       />
 
       <ConfirmDialog

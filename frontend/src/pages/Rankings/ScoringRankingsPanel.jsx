@@ -4,6 +4,8 @@ import {
   Box,
   Button,
   CircularProgress,
+  FormControlLabel,
+  Switch,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -54,6 +56,7 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
   const [importOpen, setImportOpen] = useState(false)
   const [importType, setImportType] = useState('SFLEX')
   const [importText, setImportText] = useState('')
+  const [applyBoth, setApplyBoth] = useState(true)
   const importMutation = useImportRankings()
 
   const [seasonImportOpen, setSeasonImportOpen] = useState(false)
@@ -67,6 +70,7 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
   function openImport() {
     setImportType('SFLEX')
     setImportText('')
+    setApplyBoth(true)
     importMutation.reset()
     setImportOpen(true)
   }
@@ -80,7 +84,7 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
 
   function handleImportSubmit() {
     if (!importText.trim()) return
-    importMutation.mutate({ data: importText, type: importType, period: mode, ppr: isPpr })
+    importMutation.mutate({ data: importText, type: importType, period: mode, ppr: isPpr, apply_both: applyBoth })
   }
 
   function openSeasonImport() {
@@ -99,7 +103,7 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
   }
 
   function openWaiverImport() {
-    setWaiverImportType('QB')
+    setWaiverImportType(WAIVER_POSITIONS.includes(position) ? position : 'OVR')
     setWaiverImportText('')
     waiverImportMutation.reset()
     setWaiverImportOpen(true)
@@ -309,6 +313,20 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
             : 'Select a ranking type and paste the tab-separated data below.'}
         </Typography>
 
+        <FormControlLabel
+          control={
+            <Switch
+              size="small"
+              checked={applyBoth}
+              onChange={(e) => setApplyBoth(e.target.checked)}
+              color="secondary"
+              disabled={importMutation.isPending || Boolean(importResult)}
+            />
+          }
+          label="Apply the same ranks to PPR and Non-PPR"
+          sx={{ mb: 2, display: 'block', '& .MuiTypography-root': { fontSize: '0.875rem' } }}
+        />
+
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -398,7 +416,9 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
         closeLabel="Cancel"
       >
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Select a position and paste player names below, one per line. Line order determines rank.
+          {waiverImportType === 'OVR'
+            ? 'Paste overall waiver order, one name per line. Position ranks (QB, RB, WR, TE, K, DST) are filled from that same order. Pasting a single position does not change overall ranks. Written to both PPR and non-PPR.'
+            : 'Paste player names below, one per line. Line order determines that position rank only — overall ranks are left unchanged. Written to both PPR and non-PPR.'}
         </Typography>
 
         <PositionToggle

@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\LeagueStoreRequest;
 use App\Http\Requests\Api\V1\LeagueUpdateRequest;
 use App\Http\Resources\LeagueResource;
 use App\Models\League;
+use App\Models\LeaguePlayerStatus;
 use App\Models\LineupSlot;
 use App\Models\Player;
 use App\Models\Team;
@@ -207,6 +208,16 @@ class LeagueController extends Controller
     }
 
     /**
+     * Set requires_post_waiver_moves = true on all non-bestball leagues.
+     */
+    public function flagPostWaiverMoves(): JsonResponse
+    {
+        $count = League::query()->where('bestball', false)->update(['requires_post_waiver_moves' => true]);
+
+        return response()->json(['leagues_flagged' => $count]);
+    }
+
+    /**
      * Set requires_roster_moves = true on all non-bestball leagues.
      */
     public function flagRosterMoves(): JsonResponse
@@ -272,6 +283,9 @@ class LeagueController extends Controller
         $myPlayerIds = $mySlots->pluck('player_id')->filter()->unique()->toArray();
 
         $cols = RankingFields::columns($league);
+        $statuses = LeaguePlayerStatus::query()
+            ->where('league_id', $league->id)
+            ->pluck('status', 'player_id');
 
         $myPlayers = $mySlots
             ->filter(fn ($s) => $s->player !== null)
@@ -298,13 +312,18 @@ class LeagueController extends Controller
                   ->orWhereNotNull($cols['waiver_rank_overall']);
             })
             ->get()
-            ->map(fn ($p) => array_merge([
-                'id'                    => $p->id,
-                'name'                  => $p->name,
-                'positions'             => $p->positions ?? [],
-                'irl_franchise_abbr'    => $p->irlFranchise?->abbreviated_name,
-                'bye_week'              => $p->irlFranchise?->bye_week,
-            ], RankingFields::valuesFor($p, $league)));
+            ->map(function ($p) use ($league, $statuses) {
+                $status = $statuses[$p->id] ?? 'FA';
+
+                return array_merge([
+                    'id'                    => $p->id,
+                    'name'                  => $p->name,
+                    'positions'             => $p->positions ?? [],
+                    'irl_franchise_abbr'    => $p->irlFranchise?->abbreviated_name,
+                    'bye_week'              => $p->irlFranchise?->bye_week,
+                    'status'                => $status === 'WW' ? 'WW' : 'FA',
+                ], RankingFields::valuesFor($p, $league));
+            });
 
         return response()->json([
             'my_players' => $myPlayers,

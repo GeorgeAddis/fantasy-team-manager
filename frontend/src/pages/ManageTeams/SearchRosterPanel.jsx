@@ -8,6 +8,7 @@ import {
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import ListAltIcon from '@mui/icons-material/ListAlt'
+import TuneIcon from '@mui/icons-material/Tune'
 import { useSearchMyTeams } from '@/hooks/usePlayers'
 import RosterDialog from '@/components/RosterDialog'
 
@@ -38,6 +39,25 @@ const CELL_SX = {
   whiteSpace: 'nowrap',
 }
 
+function OptimiseButton({ row, onOptimise }) {
+  if (!row.team_id || !onOptimise) return null
+  return (
+    <Button
+      size="small"
+      variant="contained"
+      startIcon={<TuneIcon />}
+      onClick={() => onOptimise(row)}
+      sx={{
+        textTransform: 'none',
+        bgcolor: 'primary.main',
+        '&:hover': { bgcolor: 'primary.dark' },
+      }}
+    >
+      Optimise
+    </Button>
+  )
+}
+
 function ViewRosterButton({ row, onViewRoster }) {
   if (!row.team_id) return null
   return (
@@ -61,12 +81,13 @@ function ViewRosterButton({ row, onViewRoster }) {
   )
 }
 
-function ResultsTable({ results, type, onViewRoster }) {
+function ResultsTable({ results, type, onViewRoster, onOptimise }) {
   if (!results || results.length === 0) return null
 
   const isPlayer = type === 'player'
+  const showOptimise = isPlayer && Boolean(onOptimise)
   const gridCols = isPlayer
-    ? '1fr 140px 80px 130px'
+    ? (showOptimise ? '1fr 140px 80px 130px 110px' : '1fr 140px 80px 130px')
     : '1fr 60px 80px 140px 100px 130px'
 
   return (
@@ -88,6 +109,7 @@ function ResultsTable({ results, type, onViewRoster }) {
             <Typography sx={HEADER_SX}>Team</Typography>
             <Typography sx={HEADER_SX}>Slot</Typography>
             <Typography sx={HEADER_SX}>Roster</Typography>
+            {showOptimise && <Typography sx={HEADER_SX}>Optimise</Typography>}
           </>
         ) : (
           <>
@@ -132,6 +154,11 @@ function ResultsTable({ results, type, onViewRoster }) {
                 <Box>
                   <ViewRosterButton row={row} onViewRoster={onViewRoster} />
                 </Box>
+                {showOptimise && (
+                  <Box>
+                    <OptimiseButton row={row} onOptimise={onOptimise} />
+                  </Box>
+                )}
               </>
             ) : (
               <>
@@ -162,10 +189,21 @@ function ResultsTable({ results, type, onViewRoster }) {
   )
 }
 
-export default function SearchRosterPanel({ type }) {
-  const [input, setInput] = useState('')
-  const [search, setSearch] = useState('')
+export default function SearchRosterPanel({
+  type,
+  onOptimise,
+  input: inputProp,
+  search: searchProp,
+  onInputChange,
+  onSearchChange,
+}) {
+  const [localInput, setLocalInput] = useState('')
+  const [localSearch, setLocalSearch] = useState('')
   const [rosterTarget, setRosterTarget] = useState(null)
+  const input = inputProp ?? localInput
+  const search = searchProp ?? localSearch
+  const setInput = onInputChange ?? setLocalInput
+  const setSearch = onSearchChange ?? setLocalSearch
 
   const { data, isLoading } = useSearchMyTeams(
     search ? { search, type } : {},
@@ -250,7 +288,7 @@ export default function SearchRosterPanel({ type }) {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   Found on {new Set(results.map((r) => r.league_name)).size} league{new Set(results.map((r) => r.league_name)).size === 1 ? '' : 's'}
                 </Typography>
-                <ResultsTable results={results} type={type} onViewRoster={setRosterTarget} />
+                <ResultsTable results={results} type={type} onViewRoster={setRosterTarget} onOptimise={onOptimise} />
               </>
             )}
           </Box>
@@ -269,7 +307,7 @@ export default function SearchRosterPanel({ type }) {
                 <Box
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: '1fr 140px 130px',
+                    gridTemplateColumns: onOptimise ? '1fr 140px 130px 110px' : '1fr 140px 130px',
                     px: 1.5,
                     py: 0.75,
                     bgcolor: 'background.paper',
@@ -280,6 +318,7 @@ export default function SearchRosterPanel({ type }) {
                   <Typography sx={HEADER_SX}>League</Typography>
                   <Typography sx={HEADER_SX}>Team</Typography>
                   <Typography sx={HEADER_SX}>Roster</Typography>
+                  {onOptimise && <Typography sx={HEADER_SX}>Optimise</Typography>}
                 </Box>
                 <Box sx={{ maxHeight: 520, overflowY: 'auto' }}>
                   {availableLeagues.map((l) => (
@@ -287,7 +326,7 @@ export default function SearchRosterPanel({ type }) {
                       key={l.league_id}
                       sx={{
                         display: 'grid',
-                        gridTemplateColumns: '1fr 140px 130px',
+                        gridTemplateColumns: onOptimise ? '1fr 140px 130px 110px' : '1fr 140px 130px',
                         px: 1.5,
                         py: 0.5,
                         borderBottom: '1px solid',
@@ -304,6 +343,11 @@ export default function SearchRosterPanel({ type }) {
                       <Box>
                         <ViewRosterButton row={l} onViewRoster={setRosterTarget} />
                       </Box>
+                      {onOptimise && (
+                        <Box>
+                          <OptimiseButton row={l} onOptimise={onOptimise} />
+                        </Box>
+                      )}
                     </Box>
                   ))}
                 </Box>

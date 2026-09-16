@@ -19,6 +19,7 @@ class LeagueUpdateRequest extends FormRequest
             'ppr'                   => ['sometimes', 'boolean'],
             'bestball'              => ['sometimes', 'boolean'],
             'requires_waiver_claim' => ['sometimes', 'boolean'],
+            'requires_post_waiver_moves' => ['sometimes', 'boolean'],
             'requires_roster_moves'     => ['sometimes', 'boolean'],
             'requires_roster_optimised' => ['sometimes', 'boolean'],
             'requires_thursday_update' => ['sometimes', 'boolean'],

@@ -48,6 +48,10 @@ export function flagWaiverClaims() {
   return apiFetch(`${path}/flag-waiver-claims`, { method: 'POST' })
 }
 
+export function flagPostWaiverMoves() {
+  return apiFetch(`${path}/flag-post-waiver-moves`, { method: 'POST' })
+}
+
 /** @returns {Promise<object>} */
 export function flagRosterMoves() {
   return apiFetch(`${path}/flag-roster-moves`, { method: 'POST' })

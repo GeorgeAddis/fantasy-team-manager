@@ -95,7 +95,7 @@ const HEAD_CELL = { fontWeight: 700, color: 'text.secondary' }
  * rows: [{ league, myTeam, analysis }]
  * variant: 'all' | 'require-lineup-change'
  */
-export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onMakeAdds, onOptimise, onThursdayUpdate }) {
+export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onMakeAdds, onMakePostWaiverMoves, onOptimise, onThursdayUpdate }) {
   const { data: settingsData } = useSettings()
   const currentWeek = parseInt(settingsData?.data?.current_week ?? '0', 10)
   const [rosterTarget, setRosterTarget] = useState(null)
@@ -107,6 +107,7 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
   const isRosterMoves = variant === 'require-roster-moves'
   const isRosterOpt = variant === 'roster-optimisation'
   const isWaiverClaims = variant === 'require-waiver-claims'
+  const isPostWaiverMoves = variant === 'post-waiver-moves'
   const isThursdayUpdate = variant === 'thursday-update'
 
   function handleUpdate(league) {
@@ -140,6 +141,8 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
               ? 'No leagues require roster optimisation.'
               : isWaiverClaims
                 ? 'No leagues require waiver claims.'
+                : isPostWaiverMoves
+                  ? 'No leagues require post-waiver moves.'
                 : isThursdayUpdate
                   ? 'No leagues require a Thursday update.'
               : 'No leagues found. Create one in the Setup tab first.'}
@@ -294,6 +297,20 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
                       }}
                     >
                       Make Claims
+                    </Button>
+                  ) : isPostWaiverMoves ? (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<PersonAddIcon />}
+                      onClick={() => onMakePostWaiverMoves?.({ league, myTeam })}
+                      sx={{
+                        textTransform: 'none',
+                        bgcolor: 'primary.main',
+                        '&:hover': { bgcolor: 'primary.dark' },
+                      }}
+                    >
+                      Make Moves
                     </Button>
                   ) : (
                     <Button

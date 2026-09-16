@@ -43,7 +43,7 @@ function byeTextColor(byeWeek, currentWeek, isMine) {
   return isMine ? 'secondary.main' : 'text.primary'
 }
 
-export default function TopWaiverColumn({ leagueId, teamId, currentWeek = 0 }) {
+export default function TopWaiverColumn({ leagueId, teamId, currentWeek = 0, includeWaivers = true, title }) {
   const [position, setPosition] = useState('OVR')
   const { data, isLoading } = useWaiverBoard(leagueId, teamId)
 
@@ -65,6 +65,7 @@ export default function TopWaiverColumn({ leagueId, teamId, currentWeek = 0 }) {
     const available = (data.available ?? [])
       .filter(filterPos)
       .filter((p) => p[rankField] != null)
+      .filter((p) => includeWaivers || p.status !== 'WW')
       .map((p) => ({ ...p, _rank: p[rankField] }))
       .sort((a, b) => a._rank - b._rank)
 
@@ -90,14 +91,14 @@ export default function TopWaiverColumn({ leagueId, teamId, currentWeek = 0 }) {
     const merged = [...myPlayers, ...availableFiltered]
     merged.sort((a, b) => a._rank - b._rank)
     return merged
-  }, [data, position, isOvr])
+  }, [data, position, isOvr, includeWaivers])
 
   const gridCols = isOvr ? '50px 1fr 50px 60px' : '50px 1fr 50px'
 
   return (
     <Box>
       <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
-        Top Waiver Players Available
+        {title ?? (includeWaivers ? 'Top Waiver Players Available' : 'Top Free Agents Available')}
       </Typography>
       <PositionToggle
         value={position}

@@ -12,6 +12,7 @@ import { useTeamFreeAgentAlerts } from '@/hooks/useTeams'
 import HiddenPlayersPanel from './HiddenPlayersPanel'
 
 const WORSE_FILTERS = ['Better', '10', '20', '30', '40', '50', 'Any']
+const STATUS_FILTERS = ['FA', 'FA + WW']
 
 const HEADER_SX = {
   fontWeight: 700,
@@ -75,14 +76,18 @@ export default function FreeAgentAlertsPanel() {
   const [rosterTarget, setRosterTarget] = useState(null)
   const [showHidden, setShowHidden] = useState(false)
   const [worseFilter, setWorseFilter] = useState('Better')
+  const [statusFilter, setStatusFilter] = useState('FA')
   const teams = useMemo(() => {
     return (data?.data ?? [])
       .map((team) => ({
         ...team,
-        players: (team.players ?? []).filter((player) => passesWorseFilter(player, worseFilter)),
+        players: (team.players ?? []).filter((player) => {
+          if (statusFilter === 'FA' && player.status === 'WW') return false
+          return passesWorseFilter(player, worseFilter)
+        }),
       }))
       .filter((team) => team.players.length > 0)
-  }, [data, worseFilter])
+  }, [data, worseFilter, statusFilter])
 
   if (showHidden) {
     return <HiddenPlayersPanel onBack={() => setShowHidden(false)} />
@@ -95,6 +100,11 @@ export default function FreeAgentAlertsPanel() {
           Free Agent Alerts
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+          <PositionToggle
+            value={statusFilter}
+            onChange={setStatusFilter}
+            positions={STATUS_FILTERS}
+          />
           <PositionToggle
             value={worseFilter}
             onChange={setWorseFilter}

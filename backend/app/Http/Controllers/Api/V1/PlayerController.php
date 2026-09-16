@@ -718,12 +718,14 @@ class PlayerController extends Controller
             'type' => ['required', 'string', 'in:SFLEX,QB,RWT,DST,K'],
             'period' => ['required', 'string', 'in:week,season'],
             'ppr' => ['sometimes', 'boolean'],
+            'apply_both' => ['sometimes', 'boolean'],
         ]);
 
         $type = $request->input('type');
         $period = $request->input('period');
         $isRwt = $type === 'RWT';
         $isSflex = $type === 'SFLEX';
+        $applyBoth = $request->boolean('apply_both', true);
         $cols = RankingFields::columns(null, $request->boolean('ppr', true));
 
         $lines = array_values(array_filter(
@@ -801,11 +803,12 @@ class PlayerController extends Controller
             $type,
             $period,
             $cols,
+            $applyBoth,
             &$updated,
             &$cleared,
             &$notFound
         ) {
-            $cleared = $this->clearPasteImportRanks($type, $period, $cols);
+            $cleared = $this->clearPasteImportRanks($type, $period, $cols, $applyBoth);
 
             foreach ($parsed as $i => $row) {
                 if (!$row['player']) {
@@ -843,6 +846,10 @@ class PlayerController extends Controller
                     }
                 }
 
+                if ($applyBoth) {
+                    $fields = RankingFields::applyToBothScoringFormats($fields);
+                }
+
                 Player::query()->where('id', $row['player']->id)->update($fields);
                 $updated++;
             }
@@ -859,7 +866,7 @@ class PlayerController extends Controller
     /**
      * Reset ranks this paste owns so omitted players (injuries, etc.) are unranked.
      */
-    private function clearPasteImportRanks(string $type, string $period, array $cols): int
+    private function clearPasteImportRanks(string $type, string $period, array $cols, bool $applyBoth = false): int
     {
         $isWeek = $period === 'week';
 
@@ -883,6 +890,10 @@ class PlayerController extends Controller
             }
         }
 
+        if ($applyBoth) {
+            $fields = RankingFields::applyToBothScoringFormats($fields);
+        }
+
         $query = Player::query()->where(function ($q) use ($positions) {
             foreach ($positions as $i => $pos) {
                 if ($i === 0) {
@@ -899,8 +910,8 @@ class PlayerController extends Controller
     /**
      * Import season rankings from an ETR-style CSV upload or pasted CSV/TSV text.
      *
-     * Required columns: Player, ETR Rank (aliases: Rank, 1QB Rank)
-     * Helpful: Position, Team (DST matching), ETR Pos Rank (aliases: 1QB Pos Rk)
+     * Required columns: Player, and Rank (aliases: ETR Rank, 1QB Rank)
+     * Helpful: Pos / Position, Team (DST matching), PosRank (aliases: ETR Pos Rank, 1QB Pos Rk)
      * If pos rank is missing, it is derived from overall rank within each position.
      */
     public function importSeasonRankings(Request $request): JsonResponse
@@ -909,8 +920,10 @@ class PlayerController extends Controller
             'file' => ['nullable', 'file', 'mimes:csv,txt', 'max:5120'],
             'data' => ['nullable', 'string', 'min:5'],
             'ppr' => ['sometimes', 'boolean'],
+            'apply_both' => ['sometimes', 'boolean'],
         ]);
 
+        $applyBoth = $request->boolean('apply_both', true);
         $rankCols = RankingFields::columns(null, $request->boolean('ppr', true));
 
         if (!$request->hasFile('file') && !$request->filled('data')) {
@@ -947,17 +960,20 @@ class PlayerController extends Controller
         }
 
         $playerCol = $this->findCsvColumn($headerMap, ['player', 'name']);
-        $rankCol = $this->findCsvColumn($headerMap, ['etr rank', 'etrrank', '1qb rank', '1qbrank', 'overall rank', 'overallrank']);
+        $rankCol = $this->findCsvColumn($headerMap, [
+            'etr rank', 'etrrank', '1qb rank', '1qbrank', 'overall rank', 'overallrank', 'rank',
+        ]);
         $posCol = $this->findCsvColumn($headerMap, ['position', 'pos']);
         $teamCol = $this->findCsvColumn($headerMap, ['team', 'nfl']);
         $posRankCol = $this->findCsvColumn($headerMap, [
             'etr pos rank', 'etrposrank', 'etr pos ra', 'etrposra', 'etr pos r', 'etrposr',
             '1qb pos rk', '1qbposrk',
+            'pos rank', 'posrank', 'pos rk', 'posrk',
         ]);
 
         if ($playerCol === null || $rankCol === null) {
             return response()->json([
-                'message' => 'CSV must include "Player" and "ETR Rank" columns (or "1QB Rank" for the older Fantrax format).',
+                'message' => 'CSV must include "Player" and a rank column ("Rank", "ETR Rank", or "1QB Rank").',
             ], 422);
         }
 
@@ -1047,14 +1063,18 @@ class PlayerController extends Controller
         $seasonCol = $rankCols['season_rank'];
         $seasonPosCol = $rankCols['season_position_rank'];
 
-        DB::transaction(function () use ($pending, &$updated, &$cleared, $seasonCol, $seasonPosCol) {
-            // Full overwrite for this scoring format only; leave the other set intact.
-            // Use query builder updates (not model->update) so ranks that happen to
-            // match the pre-wipe in-memory values are still written after the wipe.
-            $cleared = Player::query()->update([
+        DB::transaction(function () use ($pending, &$updated, &$cleared, $seasonCol, $seasonPosCol, $applyBoth) {
+            $wipe = [
                 $seasonCol => 999,
                 $seasonPosCol => 999,
-            ]);
+            ];
+            if ($applyBoth) {
+                $wipe = RankingFields::applyToBothScoringFormats($wipe);
+            }
+            // Full overwrite for this scoring format (and the other set when apply_both).
+            // Use query builder updates (not model->update) so ranks that happen to
+            // match the pre-wipe in-memory values are still written after the wipe.
+            $cleared = Player::query()->update($wipe);
 
             foreach ($pending as $row) {
                 $fields = [
@@ -1063,6 +1083,9 @@ class PlayerController extends Controller
                 ];
                 if (RankingFields::isScoringIndependent($row['player']->positions ?? [], $row['position'] ?? null)) {
                     $fields = RankingFields::mirrorScoringIndependent($fields);
+                }
+                if ($applyBoth) {
+                    $fields = RankingFields::applyToBothScoringFormats($fields);
                 }
                 Player::query()->where('id', $row['player']->id)->update($fields);
                 $updated++;
@@ -1137,7 +1160,9 @@ class PlayerController extends Controller
     /**
      * Import waiver wire rankings from plain text (one player name per line).
      * Line position = rank. Type specifies the position being imported.
-     * Clears existing waiver_rank for players of this position before importing.
+     * OVR also fills per-position ranks from order within each position.
+     * Position-only imports never write overall ranks.
+     * Writes the same ranks to both PPR and non-PPR.
      */
     public function importWaiverRankings(Request $request): JsonResponse
     {
@@ -1149,8 +1174,8 @@ class PlayerController extends Controller
 
         $type = $request->input('type');
         $cols = RankingFields::columns(null, $request->boolean('ppr', true));
-        $rankField = $type === 'OVR' ? $cols['waiver_rank_overall'] : $cols['waiver_rank'];
-        $shareAcrossScoring = RankingFields::isScoringIndependent([], $type);
+        $overallField = $cols['waiver_rank_overall'];
+        $posField = $cols['waiver_rank'];
 
         $lines = array_values(array_filter(
             array_map('trim', explode("\n", $request->input('data'))),
@@ -1162,18 +1187,6 @@ class PlayerController extends Controller
 
         if (empty($lines)) {
             return response()->json(['message' => 'No data provided.'], 422);
-        }
-
-        $clearFields = [$rankField => null];
-        if ($shareAcrossScoring) {
-            $clearFields = RankingFields::mirrorScoringIndependent($clearFields);
-        }
-
-        // Clear existing rankings for this type + scoring format
-        if ($type === 'OVR') {
-            Player::query()->update($clearFields);
-        } else {
-            Player::whereJsonContains('positions', $type)->update($clearFields);
         }
 
         $allPlayers = Player::all();
@@ -1202,8 +1215,9 @@ class PlayerController extends Controller
             }
         }
 
-        $updated = 0;
+        $matched = [];
         $notFound = [];
+        $seenIds = [];
 
         foreach ($lines as $idx => $name) {
             $rank = $idx + 1;
@@ -1217,19 +1231,87 @@ class PlayerController extends Controller
                 continue;
             }
 
-            $writeFields = [$rankField => $rank];
-            if ($shareAcrossScoring) {
-                $writeFields = RankingFields::mirrorScoringIndependent($writeFields);
+            if (isset($seenIds[$player->id])) {
+                continue;
             }
-            Player::query()->where('id', $player->id)->update($writeFields);
-            $updated++;
+            $seenIds[$player->id] = true;
+            $matched[] = ['player' => $player, 'rank' => $rank];
         }
+
+        $updated = 0;
+
+        DB::transaction(function () use (
+            $type,
+            $overallField,
+            $posField,
+            $matched,
+            &$updated
+        ) {
+            if ($type === 'OVR') {
+                Player::query()->update(RankingFields::applyToBothScoringFormats([$overallField => null]));
+
+                $posCounts = [];
+                $posRanks = [];
+                foreach ($matched as $item) {
+                    $pos = $this->primaryWaiverPosition($item['player']->positions ?? []);
+                    if ($pos === null) {
+                        continue;
+                    }
+                    $posCounts[$pos] = ($posCounts[$pos] ?? 0) + 1;
+                    $posRanks[$item['player']->id] = [$pos, $posCounts[$pos]];
+                }
+
+                foreach (array_keys($posCounts) as $pos) {
+                    $clear = RankingFields::applyToBothScoringFormats([$posField => null]);
+                    Player::whereJsonContains('positions', $pos)->update($clear);
+                }
+
+                foreach ($matched as $item) {
+                    $player = $item['player'];
+                    $fields = [$overallField => $item['rank']];
+                    $posInfo = $posRanks[$player->id] ?? null;
+                    if ($posInfo !== null) {
+                        [, $posRank] = $posInfo;
+                        $fields[$posField] = $posRank;
+                    }
+                    Player::query()->where('id', $player->id)->update(
+                        RankingFields::applyToBothScoringFormats($fields)
+                    );
+                    $updated++;
+                }
+
+                return;
+            }
+
+            $clearFields = RankingFields::applyToBothScoringFormats([$posField => null]);
+            Player::whereJsonContains('positions', $type)->update($clearFields);
+
+            foreach ($matched as $item) {
+                $fields = RankingFields::applyToBothScoringFormats([$posField => $item['rank']]);
+                Player::query()->where('id', $item['player']->id)->update($fields);
+                $updated++;
+            }
+        });
 
         return response()->json([
             'updated' => $updated,
             'not_found' => $notFound,
             'total_lines' => count($lines),
         ]);
+    }
+
+    /**
+     * First stored position that has its own waiver ranking list.
+     */
+    private function primaryWaiverPosition(array $positions): ?string
+    {
+        foreach ($positions as $pos) {
+            if (in_array($pos, ['QB', 'RB', 'WR', 'TE', 'K', 'DST'], true)) {
+                return $pos;
+            }
+        }
+
+        return null;
     }
 
     /**

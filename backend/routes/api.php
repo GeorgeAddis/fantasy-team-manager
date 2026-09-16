@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Route;
 */
 Route::prefix('v1')->group(function () {
     Route::post('leagues/flag-waiver-claims', [LeagueController::class, 'flagWaiverClaims']);
+    Route::post('leagues/flag-post-waiver-moves', [LeagueController::class, 'flagPostWaiverMoves']);
     Route::post('leagues/flag-roster-moves', [LeagueController::class, 'flagRosterMoves']);
     Route::post('leagues/flag-roster-optimisation', [LeagueController::class, 'flagRosterOptimisation']);
     Route::post('leagues/flag-thursday-update', [LeagueController::class, 'flagThursdayUpdate']);

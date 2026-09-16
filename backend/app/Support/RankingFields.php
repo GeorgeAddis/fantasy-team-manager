@@ -100,4 +100,35 @@ class RankingFields
 
         return $out;
     }
+
+    /**
+     * Write the same rank values onto the matching PPR and non-PPR columns.
+     */
+    public static function applyToBothScoringFormats(array $fields): array
+    {
+        $pairs = [
+            'week_rank' => 'week_rank_non_ppr',
+            'week_rank_non_ppr' => 'week_rank',
+            'week_position_rank' => 'week_position_rank_non_ppr',
+            'week_position_rank_non_ppr' => 'week_position_rank',
+            'season_rank' => 'season_rank_non_ppr',
+            'season_rank_non_ppr' => 'season_rank',
+            'season_position_rank' => 'season_position_rank_non_ppr',
+            'season_position_rank_non_ppr' => 'season_position_rank',
+            'waiver_rank' => 'waiver_rank_non_ppr',
+            'waiver_rank_non_ppr' => 'waiver_rank',
+            'waiver_rank_overall' => 'waiver_rank_overall_non_ppr',
+            'waiver_rank_overall_non_ppr' => 'waiver_rank_overall',
+        ];
+
+        $out = $fields;
+        foreach ($fields as $col => $value) {
+            $other = $pairs[$col] ?? null;
+            if ($other !== null) {
+                $out[$other] = $value;
+            }
+        }
+
+        return $out;
+    }
 }

@@ -41,7 +41,7 @@ function byeTextColor(byeWeek, currentWeek, isMine) {
   return isMine ? 'secondary.main' : 'text.primary'
 }
 
-export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0 }) {
+export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0, includeWaivers = true }) {
   const [position, setPosition] = useState('QB')
   const { data, isLoading } = useWaiverBoard(leagueId, teamId)
 
@@ -56,6 +56,7 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
     const available = (data.available ?? [])
       .filter((p) => matchesPosition(p.positions ?? [], position))
       .filter((p) => p.season_rank != null)
+      .filter((p) => includeWaivers || p.status !== 'WW')
       .sort((a, b) => a.season_rank - b.season_rank)
 
     if (available.length === 0) return myPlayers.sort((a, b) => a.season_rank - b.season_rank)
@@ -89,7 +90,7 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
     merged.sort((a, b) => a.season_rank - b.season_rank)
 
     return merged
-  }, [data, position])
+  }, [data, position, includeWaivers])
 
   return (
     <Box>

@@ -28,6 +28,7 @@ class LeagueResource extends JsonResource
                     ]);
             }),
             'requires_waiver_claim' => $this->requires_waiver_claim,
+            'requires_post_waiver_moves' => $this->requires_post_waiver_moves,
             'requires_roster_moves' => $this->requires_roster_moves,
             'requires_roster_optimised' => $this->requires_roster_optimised,
             'requires_thursday_update' => $this->requires_thursday_update,

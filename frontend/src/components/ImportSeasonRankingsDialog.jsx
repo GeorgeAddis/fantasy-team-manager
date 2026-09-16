@@ -9,6 +9,8 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  FormControlLabel,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material'
@@ -26,6 +28,7 @@ export default function ImportSeasonRankingsDialog({
 }) {
   const [file, setFile] = useState(null)
   const [pasteText, setPasteText] = useState('')
+  const [applyBoth, setApplyBoth] = useState(true)
   const inputRef = useRef(null)
 
   function handleFileChange(e) {
@@ -37,16 +40,17 @@ export default function ImportSeasonRankingsDialog({
     if (isLoading) return
     setFile(null)
     setPasteText('')
+    setApplyBoth(true)
     onClose()
   }
 
   function handleImport() {
     if (file) {
-      onImport({ file })
+      onImport({ file, apply_both: applyBoth })
       return
     }
     if (pasteText.trim()) {
-      onImport({ data: pasteText })
+      onImport({ data: pasteText, apply_both: applyBoth })
     }
   }
 
@@ -71,10 +75,24 @@ export default function ImportSeasonRankingsDialog({
       </DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ color: 'text.secondary', mb: 2 }}>
-          Upload an ETR CSV with <strong>Player</strong>, <strong>ETR Rank</strong>, and ideally{' '}
-          <strong>Position</strong>, <strong>Team</strong>, and <strong>ETR Pos Rank</strong>.
-          Position rank is used when present; otherwise it is derived from overall rank within each position.
+          Upload a CSV with <strong>Player</strong> and <strong>Rank</strong> (or ETR Rank / 1QB Rank).
+          Helpful extras: <strong>Pos</strong>, <strong>Team</strong>, and <strong>PosRank</strong>
+          {' '}(or ETR Pos Rank). Position rank is used when present; otherwise it is derived from overall rank within each position.
         </DialogContentText>
+
+        <FormControlLabel
+          control={
+            <Switch
+              size="small"
+              checked={applyBoth}
+              onChange={(e) => setApplyBoth(e.target.checked)}
+              color="secondary"
+              disabled={isLoading || Boolean(result)}
+            />
+          }
+          label="Apply the same ranks to PPR and Non-PPR"
+          sx={{ mb: 2, '& .MuiTypography-root': { fontSize: '0.875rem' } }}
+        />
 
         <input
           ref={inputRef}
@@ -124,7 +142,7 @@ export default function ImportSeasonRankingsDialog({
             setPasteText(e.target.value)
             if (e.target.value) setFile(null)
           }}
-          placeholder={"Player,Position,Team,ETR Rank,...,ETR Pos Rank\nJahmyr Gibbs,RB,DET,1,...,RB01"}
+          placeholder={"Player,Pos,Team,Rank,PosRank\nJahmyr Gibbs,RB,DET,1,RB1"}
           multiline
           minRows={5}
           fullWidth

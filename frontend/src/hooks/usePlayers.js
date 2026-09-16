@@ -86,7 +86,8 @@ export function useImportFantraxIds() {
 export function useImportRankings() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ data, type, period, ppr = true }) => api.importRankings(data, type, period, ppr),
+    mutationFn: ({ data, type, period, ppr = true, apply_both = true }) =>
+      api.importRankings(data, type, period, ppr, apply_both),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.players.all })
     },

@@ -46,23 +46,24 @@ export function importPlayersFromFantrax(clearExisting = false, skipExisting = t
   })
 }
 
-export function importRankings(data, type, period, ppr = true) {
+export function importRankings(data, type, period, ppr = true, applyBoth = true) {
   return apiFetch(`${path}/import-rankings`, {
     method: 'POST',
-    body: { data, type, period, ppr },
+    body: { data, type, period, ppr, apply_both: applyBoth },
   })
 }
 
-export function importSeasonRankings({ file, data, ppr = true } = {}) {
+export function importSeasonRankings({ file, data, ppr = true, apply_both = true } = {}) {
   if (file) {
     const form = new FormData()
     form.append('file', file)
     form.append('ppr', ppr ? '1' : '0')
+    form.append('apply_both', apply_both ? '1' : '0')
     return apiFetch(`${path}/import-season-rankings`, { method: 'POST', body: form })
   }
   return apiFetch(`${path}/import-season-rankings`, {
     method: 'POST',
-    body: { data, ppr },
+    body: { data, ppr, apply_both },
   })
 }
 

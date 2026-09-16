@@ -56,7 +56,17 @@ function byeTextColor(byeWeek, currentWeek, isMine) {
   return isMine ? 'secondary.main' : 'text.primary'
 }
 
-export default function WeekRankingsColumn({ leagueId, teamId, currentWeek = 0 }) {
+function statusLabel(status) {
+  return status === 'WW' ? 'Waivers' : 'FA'
+}
+
+export default function WeekRankingsColumn({
+  leagueId,
+  teamId,
+  currentWeek = 0,
+  includeWaivers = true,
+  showStatus = false,
+}) {
   const [position, setPosition] = useState('QB')
   const { data, isLoading } = useWaiverBoard(leagueId, teamId)
 
@@ -74,6 +84,7 @@ export default function WeekRankingsColumn({ leagueId, teamId, currentWeek = 0 }
     const available = (data.available ?? [])
       .filter((p) => matchesPosition(p.positions ?? [], position))
       .filter((p) => p[field] != null)
+      .filter((p) => includeWaivers || p.status !== 'WW')
       .map((p) => ({ ...p, _rank: p[field] }))
       .sort((a, b) => a._rank - b._rank)
 
@@ -100,9 +111,15 @@ export default function WeekRankingsColumn({ leagueId, teamId, currentWeek = 0 }
     const merged = [...myPlayers, ...availableFiltered]
     merged.sort((a, b) => a._rank - b._rank)
     return merged
-  }, [data, position, field])
+  }, [data, position, field, includeWaivers])
 
-  const gridCols = isRwt ? '50px 1fr 50px 60px' : '50px 1fr 50px'
+  const gridCols = [
+    '50px',
+    '1fr',
+    '50px',
+    ...(isRwt ? ['60px'] : []),
+    ...(showStatus ? ['56px'] : []),
+  ].join(' ')
 
   return (
     <Box>
@@ -136,6 +153,7 @@ export default function WeekRankingsColumn({ leagueId, teamId, currentWeek = 0 }
             <Typography sx={HEADER_SX}>Name</Typography>
             <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Bye</Typography>
             {isRwt && <Typography sx={HEADER_SX}>Pos</Typography>}
+            {showStatus && <Typography sx={{ ...HEADER_SX, textAlign: 'right' }}>Status</Typography>}
           </Box>
 
           <Box sx={{ maxHeight: 520, overflowY: 'auto' }}>
@@ -173,6 +191,22 @@ export default function WeekRankingsColumn({ leagueId, teamId, currentWeek = 0 }
                       {isRwt && (
                         <Typography variant="body2" sx={{ ...CELL_SX, color: subColor }}>
                           {positionRankLabel(row)}
+                        </Typography>
+                      )}
+                      {showStatus && (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            ...CELL_SX,
+                            fontWeight: 700,
+                            fontFamily: 'monospace',
+                            textAlign: 'right',
+                            color: row._mine
+                              ? subColor
+                              : row.status === 'WW' ? 'warning.main' : 'success.main',
+                          }}
+                        >
+                          {row._mine ? '—' : statusLabel(row.status)}
                         </Typography>
                       )}
                     </>
