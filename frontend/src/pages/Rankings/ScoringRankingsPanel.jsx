@@ -13,9 +13,17 @@ import {
 } from '@mui/material'
 import LeaderboardIcon from '@mui/icons-material/Leaderboard'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
-import { usePlayerList, useImportRankings, useImportSeasonRankings, useImportWaiverRankings } from '@/hooks/usePlayers'
+import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd'
+import {
+  usePlayerList,
+  useImportRankings,
+  useImportSeasonRankings,
+  useImportWaiverRankings,
+  useAppendWaiverToSeasonRankings,
+} from '@/hooks/usePlayers'
 import PasteDataDialog from '@/components/PasteDataDialog'
 import ImportSeasonRankingsDialog from '@/components/ImportSeasonRankingsDialog'
+import AppendWaiverPlayersDialog from '@/components/AppendWaiverPlayersDialog'
 import PositionToggle from '@/components/PositionToggle'
 
 const UPLOAD_TYPES = ['SFLEX', 'QB', 'RWT', 'DST', 'K']
@@ -62,6 +70,9 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
   const [seasonImportOpen, setSeasonImportOpen] = useState(false)
   const seasonImportMutation = useImportSeasonRankings()
 
+  const [appendWaiverOpen, setAppendWaiverOpen] = useState(false)
+  const appendWaiverMutation = useAppendWaiverToSeasonRankings()
+
   const [waiverImportOpen, setWaiverImportOpen] = useState(false)
   const [waiverImportType, setWaiverImportType] = useState('QB')
   const [waiverImportText, setWaiverImportText] = useState('')
@@ -100,6 +111,21 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
 
   function handleSeasonImportSubmit(payload) {
     seasonImportMutation.mutate({ ...payload, ppr: isPpr })
+  }
+
+  function openAppendWaiver() {
+    appendWaiverMutation.reset()
+    setAppendWaiverOpen(true)
+  }
+
+  function closeAppendWaiver() {
+    if (appendWaiverMutation.isPending) return
+    setAppendWaiverOpen(false)
+    appendWaiverMutation.reset()
+  }
+
+  function handleAppendWaiver() {
+    appendWaiverMutation.mutate({ ppr: isPpr })
   }
 
   function openWaiverImport() {
@@ -210,6 +236,21 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
         <Typography variant="h5" color="secondary.main" sx={{ flex: 1 }}>
           {modeTitle}
         </Typography>
+
+        {mode === 'season' && (
+          <Tooltip title={`Append ${scoringLabel} overall waiver wire players to the end of these rankings`}>
+            <Button
+              size="small"
+              variant="outlined"
+              color="secondary"
+              startIcon={<PlaylistAddIcon />}
+              onClick={openAppendWaiver}
+              sx={{ textTransform: 'none', mr: 1 }}
+            >
+              Append waiver players
+            </Button>
+          </Tooltip>
+        )}
 
         <Tooltip title="Import rankings">
           <Button
@@ -398,6 +439,16 @@ export default function ScoringRankingsPanel({ scoring, mode }) {
         result={seasonImportResult}
         error={seasonImportMutation.error}
         title={`Import ${scoringLabel} Season Rankings`}
+      />
+
+      <AppendWaiverPlayersDialog
+        open={appendWaiverOpen}
+        onClose={closeAppendWaiver}
+        onAppend={handleAppendWaiver}
+        isPending={appendWaiverMutation.isPending}
+        result={appendWaiverMutation.data}
+        error={appendWaiverMutation.error}
+        scoringLabel={scoringLabel}
       />
 
       <PasteDataDialog

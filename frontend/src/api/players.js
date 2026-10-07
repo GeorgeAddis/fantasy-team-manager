@@ -88,6 +88,13 @@ export function importWaiverRankings(data, type, ppr = true) {
   })
 }
 
+export function appendWaiverToSeasonRankings(ppr = true) {
+  return apiFetch(`${path}/append-waiver-season-rankings`, {
+    method: 'POST',
+    body: { ppr },
+  })
+}
+
 export function listFaAlertHidden() {
   return apiFetch(`${path}/fa-alert-hidden`)
 }

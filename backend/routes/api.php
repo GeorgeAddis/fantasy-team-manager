@@ -53,6 +53,7 @@ Route::prefix('v1')->group(function () {
     Route::post('players/import-rankings', [PlayerController::class, 'importRankings']);
     Route::post('players/import-season-rankings', [PlayerController::class, 'importSeasonRankings']);
     Route::post('players/import-waiver-rankings', [PlayerController::class, 'importWaiverRankings']);
+    Route::post('players/append-waiver-season-rankings', [PlayerController::class, 'appendWaiverToSeasonRankings']);
     Route::post('players/import-fantrax-ids', [PlayerController::class, 'importFantraxIds']);
     Route::get('players/search-my-teams', [PlayerController::class, 'searchMyTeams']);
     Route::get('players/exposure', [PlayerController::class, 'exposure']);

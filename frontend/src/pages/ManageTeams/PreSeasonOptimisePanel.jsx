@@ -51,6 +51,27 @@ const POSITION_COLORS = {
 
 const STARTER_POSITIONS = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'WR3', 'TE', 'RWT', 'K', 'DST']
 const SLOT_LABELS = { QB: 'QB', RB1: 'RB1', RB2: 'RB2', WR1: 'WR1', WR2: 'WR2', WR3: 'WR3', TE: 'TE', RWT: 'FLEX', K: 'K', DST: 'DST', BN: 'BN' }
+const BASE_POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+
+function basePosition(player) {
+  return (player?.positions ?? []).find((p) => BASE_POSITIONS.includes(p)) ?? null
+}
+
+function seasonRankValue(player) {
+  const rank = player?.season_rank
+  if (rank == null || rank <= 0 || rank >= 999) return 10000
+  return rank
+}
+
+function compareBenchSlots(a, b) {
+  const posRank = (slot) => {
+    const index = BASE_POSITIONS.indexOf(basePosition(slot.player))
+    return index === -1 ? BASE_POSITIONS.length : index
+  }
+  const posCmp = posRank(a) - posRank(b)
+  if (posCmp !== 0) return posCmp
+  return seasonRankValue(a.player) - seasonRankValue(b.player)
+}
 const HEAD_CELL = { fontWeight: 700, color: 'text.secondary' }
 
 function formatUpdatedAt(iso) {
@@ -332,6 +353,14 @@ export default function PreSeasonOptimisePanel() {
 
   function RosterRow({ slot }) {
     const player = slot.player
+    const isBench = slot.lineup_position === 'BN'
+    const benchPos = isBench ? basePosition(player) : null
+    const posLabel = isBench
+      ? (benchPos ?? '—')
+      : (SLOT_LABELS[slot.lineup_position] ?? slot.lineup_position)
+    const posColor = isBench
+      ? (POSITION_COLORS[benchPos] ?? '#616161')
+      : (POSITION_COLORS[slot.lineup_position] ?? '#616161')
     const bgColor = player ? byeRowColor(player.bye_week) : undefined
     return (
       <Box
@@ -348,14 +377,14 @@ export default function PreSeasonOptimisePanel() {
         }}
       >
         <Chip
-          label={SLOT_LABELS[slot.lineup_position] ?? slot.lineup_position}
+          label={posLabel}
           size="small"
           sx={{
             width: 48,
             height: 22,
             fontWeight: 700,
             fontSize: '0.65rem',
-            bgcolor: POSITION_COLORS[slot.lineup_position] ?? '#616161',
+            bgcolor: posColor,
             color: '#fff',
           }}
         />
@@ -396,7 +425,7 @@ export default function PreSeasonOptimisePanel() {
   function renderRosterPanel() {
     const rosterSlots = rosterPanelData?.data ?? []
     const starters = rosterSlots.filter((s) => STARTER_POSITIONS.includes(s.lineup_position))
-    const bench = rosterSlots.filter((s) => s.lineup_position === 'BN')
+    const bench = rosterSlots.filter((s) => s.lineup_position === 'BN').sort(compareBenchSlots)
 
     return (
       <Box>

@@ -3,7 +3,14 @@ import { Box, CircularProgress, Typography } from '@mui/material'
 import PositionToggle from '@/components/PositionToggle'
 import { useWaiverBoard } from '@/hooks/useLeagues'
 
+const SEASON_POSITIONS = ['OVR', 'QB', 'RB', 'WR', 'TE', 'RWT', 'DST', 'K']
+
+function isRanked(rank) {
+  return rank != null && rank > 0 && rank < 999
+}
+
 function matchesPosition(playerPositions, position) {
+  if (position === 'OVR') return true
   if (position === 'RWT') {
     return playerPositions.some((p) => ['RB', 'WR', 'TE'].includes(p))
   }
@@ -42,7 +49,7 @@ function byeTextColor(byeWeek, currentWeek, isMine) {
 }
 
 export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0, includeWaivers = true }) {
-  const [position, setPosition] = useState('QB')
+  const [position, setPosition] = useState('OVR')
   const { data, isLoading } = useWaiverBoard(leagueId, teamId)
 
   const rows = useMemo(() => {
@@ -50,46 +57,46 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
 
     const myPlayers = (data.my_players ?? [])
       .filter((p) => matchesPosition(p.positions ?? [], position))
-      .filter((p) => p.season_rank != null)
-      .map((p) => ({ ...p, _mine: true }))
+      .map((p) => ({
+        ...p,
+        _mine: true,
+        _rank: isRanked(p.season_rank) ? p.season_rank : null,
+      }))
 
     const available = (data.available ?? [])
       .filter((p) => matchesPosition(p.positions ?? [], position))
-      .filter((p) => p.season_rank != null)
+      .filter((p) => isRanked(p.season_rank))
       .filter((p) => includeWaivers || p.status !== 'WW')
-      .sort((a, b) => a.season_rank - b.season_rank)
+      .map((p) => ({ ...p, _rank: p.season_rank }))
+      .sort((a, b) => a._rank - b._rank)
 
-    if (available.length === 0) return myPlayers.sort((a, b) => a.season_rank - b.season_rank)
+    const mineRanked = myPlayers.filter((p) => p._rank != null)
+    const mineUnranked = myPlayers.filter((p) => p._rank == null)
+      .sort((a, b) => a.name.localeCompare(b.name))
 
-    const bestAvailableRank = available[0].season_rank
+    if (available.length === 0) {
+      mineRanked.sort((a, b) => a._rank - b._rank)
+      return [...mineRanked, ...mineUnranked]
+    }
 
-    // Only show available players ranked better than my best, plus 10 after my worst
-    const availableAboveBest = available.filter((p) => p.season_rank < (myPlayers[0]?.season_rank ?? Infinity))
-
-    // Cut off available players 10 spots after my worst ranked player
     let cutoffRank = null
-    if (myPlayers.length > 0) {
-      const worstMyRank = Math.max(...myPlayers.map((p) => p.season_rank))
-      const availableBeyond = available.filter((p) => p.season_rank > worstMyRank)
+    if (mineRanked.length > 0) {
+      const worstMyRank = Math.max(...mineRanked.map((p) => p._rank))
+      const availableBeyond = available.filter((p) => p._rank > worstMyRank)
       if (availableBeyond.length > 10) {
-        cutoffRank = availableBeyond[9].season_rank
+        cutoffRank = availableBeyond[9]._rank
       }
-    } else {
-      // None of my players in this position range — show top 30 available
-      if (available.length > 30) {
-        cutoffRank = available[29].season_rank
-      }
+    } else if (available.length > 30) {
+      cutoffRank = available[29]._rank
     }
 
     const availableFiltered = cutoffRank != null
-      ? available.filter((p) => p.season_rank <= cutoffRank)
+      ? available.filter((p) => p._rank <= cutoffRank)
       : available
 
-    // Merge all my players + filtered available, sort by season_rank
-    const merged = [...myPlayers, ...availableFiltered]
-    merged.sort((a, b) => a.season_rank - b.season_rank)
-
-    return merged
+    const merged = [...mineRanked, ...availableFiltered]
+    merged.sort((a, b) => a._rank - b._rank)
+    return [...merged, ...mineUnranked]
   }, [data, position, includeWaivers])
 
   return (
@@ -97,7 +104,7 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
       <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
         Rest of Season
       </Typography>
-      <PositionToggle value={position} onChange={setPosition} sx={{ mb: 2 }} />
+      <PositionToggle value={position} onChange={setPosition} positions={SEASON_POSITIONS} sx={{ mb: 2 }} />
 
       {isLoading && <CircularProgress size={24} sx={{ mt: 2 }} />}
 
@@ -149,7 +156,7 @@ export default function SeasonRankingsColumn({ leagueId, teamId, currentWeek = 0
                   return (
                     <>
                       <Typography variant="body2" sx={{ ...CELL_SX, fontWeight: 700, color: textColor }}>
-                        {row.season_rank}
+                        {row._rank ?? '—'}
                       </Typography>
                       <Typography variant="body2" sx={{ ...CELL_SX, color: textColor }}>
                         {displayName(row)}

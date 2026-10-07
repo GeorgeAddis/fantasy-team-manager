@@ -166,7 +166,7 @@ class OptimalLineup
     /**
      * Roster-only lineup advice: rank-optimal starters, playing players before byes,
      * FLEX = latest kickoff among the surplus group. Used by Require Lineup Change
-     * and Thursday step 1.
+     * and the Thursday lineup-changes step.
      *
      * @return array{changes: list<array<string, mixed>>, optimal_lineup: array{starters: list<array<string, mixed>>, bench: list<array<string, mixed>>}}
      */

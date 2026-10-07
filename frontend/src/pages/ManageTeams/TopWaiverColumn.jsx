@@ -23,6 +23,10 @@ function posRankLabel(player) {
   return `${pos}${rank}`
 }
 
+function isPositionRanked(rank) {
+  return rank != null && rank > 0 && rank < 999
+}
+
 const HEADER_SX = {
   fontWeight: 700,
   color: 'text.secondary',
@@ -52,21 +56,22 @@ export default function TopWaiverColumn({ leagueId, teamId, currentWeek = 0, inc
   const rows = useMemo(() => {
     if (!data) return []
 
-    const rankField = isOvr ? 'waiver_rank_overall' : 'waiver_rank'
+    const rankOf = (p) => (isOvr ? p.waiver_rank_overall : p.waiver_rank)
+    const hasRank = (p) => (isOvr ? rankOf(p) != null : isPositionRanked(rankOf(p)))
 
     const filterPos = (p) =>
       isOvr ? true : (p.positions ?? []).includes(position)
 
     const myPlayers = (data.my_players ?? [])
       .filter(filterPos)
-      .filter((p) => p[rankField] != null)
-      .map((p) => ({ ...p, _mine: true, _rank: p[rankField] }))
+      .filter(hasRank)
+      .map((p) => ({ ...p, _mine: true, _rank: rankOf(p) }))
 
     const available = (data.available ?? [])
       .filter(filterPos)
-      .filter((p) => p[rankField] != null)
+      .filter(hasRank)
       .filter((p) => includeWaivers || p.status !== 'WW')
-      .map((p) => ({ ...p, _rank: p[rankField] }))
+      .map((p) => ({ ...p, _rank: rankOf(p) }))
       .sort((a, b) => a._rank - b._rank)
 
     if (available.length === 0) return myPlayers.sort((a, b) => a._rank - b._rank)

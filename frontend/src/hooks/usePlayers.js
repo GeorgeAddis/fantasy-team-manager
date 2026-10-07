@@ -251,3 +251,14 @@ export function useImportSeasonRankings() {
     },
   })
 }
+
+export function useAppendWaiverToSeasonRankings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ppr = true }) => api.appendWaiverToSeasonRankings(ppr),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.players.all })
+      qc.invalidateQueries({ queryKey: queryKeys.leagues.all })
+    },
+  })
+}

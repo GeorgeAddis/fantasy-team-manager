@@ -31,8 +31,10 @@ const POSITION_LABELS = {
 
 const POSITION_COLORS = {
   QB: '#e57373',
+  RB: '#64b5f6',
   RB1: '#64b5f6',
   RB2: '#64b5f6',
+  WR: '#81c784',
   WR1: '#81c784',
   WR2: '#81c784',
   WR3: '#81c784',
@@ -43,11 +45,37 @@ const POSITION_COLORS = {
   BN: '#616161',
 }
 
+const BASE_POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+
+function basePosition(player) {
+  return (player?.positions ?? []).find((p) => BASE_POSITIONS.includes(p)) ?? null
+}
+
+function seasonRankValue(player) {
+  const rank = player?.season_rank
+  if (rank == null || rank <= 0 || rank >= 999) return 10000
+  return rank
+}
+
+function compareBenchSlots(a, b) {
+  const posRank = (slot) => {
+    const index = BASE_POSITIONS.indexOf(basePosition(slot.player))
+    return index === -1 ? BASE_POSITIONS.length : index
+  }
+  const posCmp = posRank(a) - posRank(b)
+  if (posCmp !== 0) return posCmp
+  return seasonRankValue(a.player) - seasonRankValue(b.player)
+}
+
 function SlotRow({ slot }) {
   const pos = slot.lineup_position
   const player = slot.player
-  const label = POSITION_LABELS[pos] ?? pos
-  const color = POSITION_COLORS[pos] ?? '#616161'
+  const isBench = pos === 'BN'
+  const benchPos = isBench ? basePosition(player) : null
+  const label = isBench ? (benchPos ?? '—') : (POSITION_LABELS[pos] ?? pos)
+  const color = isBench
+    ? (POSITION_COLORS[benchPos] ?? '#616161')
+    : (POSITION_COLORS[pos] ?? '#616161')
 
   return (
     <Box
@@ -114,7 +142,7 @@ export default function RosterDialog({ open, onClose, teamId, teamName, leagueNa
   const starters = STARTER_POSITIONS.map((pos) =>
     slots.find((s) => s.lineup_position === pos) ?? { lineup_position: pos, player: null },
   )
-  const bench = slots.filter((s) => s.lineup_position === 'BN')
+  const bench = slots.filter((s) => s.lineup_position === 'BN').sort(compareBenchSlots)
 
   const hasAnyPlayer = slots.some((s) => s.player != null)
 

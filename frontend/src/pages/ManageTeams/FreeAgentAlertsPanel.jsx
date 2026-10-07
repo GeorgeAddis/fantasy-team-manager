@@ -13,6 +13,7 @@ import HiddenPlayersPanel from './HiddenPlayersPanel'
 
 const WORSE_FILTERS = ['Better', '10', '20', '30', '40', '50', 'Any']
 const STATUS_FILTERS = ['FA', 'FA + WW']
+const RANK_CAPS = ['Top 100', 'Top 125', 'Top 150', 'Any']
 
 const HEADER_SX = {
   fontWeight: 700,
@@ -71,23 +72,31 @@ function passesWorseFilter(player, filter) {
   return worseBy <= Number(filter)
 }
 
+function passesRankCap(player, cap) {
+  if (cap === 'Any') return true
+  const limit = Number(cap.replace(/\D/g, ''))
+  return seasonRankValue(player.season_rank) <= limit
+}
+
 export default function FreeAgentAlertsPanel() {
   const { data, isLoading, isError, error } = useTeamFreeAgentAlerts()
   const [rosterTarget, setRosterTarget] = useState(null)
   const [showHidden, setShowHidden] = useState(false)
   const [worseFilter, setWorseFilter] = useState('Better')
   const [statusFilter, setStatusFilter] = useState('FA')
+  const [rankCap, setRankCap] = useState('Any')
   const teams = useMemo(() => {
     return (data?.data ?? [])
       .map((team) => ({
         ...team,
         players: (team.players ?? []).filter((player) => {
           if (statusFilter === 'FA' && player.status === 'WW') return false
+          if (!passesRankCap(player, rankCap)) return false
           return passesWorseFilter(player, worseFilter)
         }),
       }))
       .filter((team) => team.players.length > 0)
-  }, [data, worseFilter, statusFilter])
+  }, [data, worseFilter, statusFilter, rankCap])
 
   if (showHidden) {
     return <HiddenPlayersPanel onBack={() => setShowHidden(false)} />
@@ -104,6 +113,11 @@ export default function FreeAgentAlertsPanel() {
             value={statusFilter}
             onChange={setStatusFilter}
             positions={STATUS_FILTERS}
+          />
+          <PositionToggle
+            value={rankCap}
+            onChange={setRankCap}
+            positions={RANK_CAPS}
           />
           <PositionToggle
             value={worseFilter}

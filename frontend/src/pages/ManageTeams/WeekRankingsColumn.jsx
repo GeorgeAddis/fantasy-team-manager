@@ -11,6 +11,10 @@ function rankField(position) {
   return 'week_rank'
 }
 
+function isRanked(rank) {
+  return rank != null && rank > 0 && rank < 999
+}
+
 function matchesPosition(playerPositions, position) {
   if (position === 'RWT') {
     return playerPositions.some((p) => ['RB', 'WR', 'TE'].includes(p))
@@ -78,39 +82,48 @@ export default function WeekRankingsColumn({
 
     const myPlayers = (data.my_players ?? [])
       .filter((p) => matchesPosition(p.positions ?? [], position))
-      .filter((p) => p[field] != null)
-      .map((p) => ({ ...p, _mine: true, _rank: p[field] }))
+      .map((p) => ({
+        ...p,
+        _mine: true,
+        _rank: isRanked(p[field]) ? p[field] : null,
+      }))
 
     const available = (data.available ?? [])
       .filter((p) => matchesPosition(p.positions ?? [], position))
-      .filter((p) => p[field] != null)
+      .filter((p) => isRanked(p[field]))
       .filter((p) => includeWaivers || p.status !== 'WW')
       .map((p) => ({ ...p, _rank: p[field] }))
       .sort((a, b) => a._rank - b._rank)
 
-    if (available.length === 0) return myPlayers.sort((a, b) => a._rank - b._rank)
+    const mineRanked = myPlayers.filter((p) => p._rank != null)
+    const mineUnranked = myPlayers
+      .filter((p) => p._rank == null)
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    if (available.length === 0) {
+      mineRanked.sort((a, b) => a._rank - b._rank)
+      return [...mineRanked, ...mineUnranked]
+    }
 
     // Show all my players, plus available players better than my worst + 10 after
     let cutoffRank = null
-    if (myPlayers.length > 0) {
-      const worstMyRank = Math.max(...myPlayers.map((p) => p._rank))
+    if (mineRanked.length > 0) {
+      const worstMyRank = Math.max(...mineRanked.map((p) => p._rank))
       const availableBeyond = available.filter((p) => p._rank > worstMyRank)
       if (availableBeyond.length > 10) {
         cutoffRank = availableBeyond[9]._rank
       }
-    } else {
-      if (available.length > 30) {
-        cutoffRank = available[29]._rank
-      }
+    } else if (available.length > 30) {
+      cutoffRank = available[29]._rank
     }
 
     const availableFiltered = cutoffRank != null
       ? available.filter((p) => p._rank <= cutoffRank)
       : available
 
-    const merged = [...myPlayers, ...availableFiltered]
+    const merged = [...mineRanked, ...availableFiltered]
     merged.sort((a, b) => a._rank - b._rank)
-    return merged
+    return [...merged, ...mineUnranked]
   }, [data, position, field, includeWaivers])
 
   const gridCols = [
@@ -180,7 +193,7 @@ export default function WeekRankingsColumn({
                   return (
                     <>
                       <Typography variant="body2" sx={{ ...CELL_SX, fontWeight: 700, color: textColor }}>
-                        {row._rank}
+                        {row._rank ?? '—'}
                       </Typography>
                       <Typography variant="body2" sx={{ ...CELL_SX, color: textColor }}>
                         {displayName(row)}

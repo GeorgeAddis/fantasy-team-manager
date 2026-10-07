@@ -3,6 +3,10 @@ import { Box, CircularProgress, Typography } from '@mui/material'
 import PositionToggle from '@/components/PositionToggle'
 import { useWaiverBoard } from '@/hooks/useLeagues'
 
+function isRanked(rank) {
+  return rank != null && rank > 0 && rank < 999
+}
+
 function matchesPosition(playerPositions, position) {
   if (position === 'RWT') {
     return playerPositions.some((p) => ['RB', 'WR', 'TE'].includes(p))
@@ -69,39 +73,48 @@ export default function SeasonRankingsExpanded({ leagueId, teamId, currentWeek =
 
     const myPlayers = (data.my_players ?? [])
       .filter((p) => matchesPosition(p.positions ?? [], position))
-      .filter((p) => p.season_rank != null)
-      .map((p) => ({ ...p, _mine: true }))
+      .map((p) => ({
+        ...p,
+        _mine: true,
+        _rank: isRanked(p.season_rank) ? p.season_rank : null,
+      }))
 
     const available = (data.available ?? [])
       .filter((p) => matchesPosition(p.positions ?? [], position))
-      .filter((p) => p.season_rank != null)
+      .filter((p) => isRanked(p.season_rank))
       .filter((p) => includeWaivers || p.status !== 'WW')
       .sort((a, b) => a.season_rank - b.season_rank)
 
-    if (available.length === 0) return myPlayers.sort((a, b) => a.season_rank - b.season_rank)
+    const mineRanked = myPlayers.filter((p) => p._rank != null)
+    const mineUnranked = myPlayers
+      .filter((p) => p._rank == null)
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    if (available.length === 0) {
+      mineRanked.sort((a, b) => a._rank - b._rank)
+      return [...mineRanked, ...mineUnranked]
+    }
 
     // Only show available players ranked better than my best, plus 10 after my worst
     let cutoffRank = null
-    if (myPlayers.length > 0) {
-      const worstMyRank = Math.max(...myPlayers.map((p) => p.season_rank))
+    if (mineRanked.length > 0) {
+      const worstMyRank = Math.max(...mineRanked.map((p) => p._rank))
       const availableBeyond = available.filter((p) => p.season_rank > worstMyRank)
       if (availableBeyond.length > 10) {
         cutoffRank = availableBeyond[9].season_rank
       }
-    } else {
-      if (available.length > 30) {
-        cutoffRank = available[29].season_rank
-      }
+    } else if (available.length > 30) {
+      cutoffRank = available[29].season_rank
     }
 
     const availableFiltered = cutoffRank != null
       ? available.filter((p) => p.season_rank <= cutoffRank)
       : available
 
-    const merged = [...myPlayers, ...availableFiltered]
+    const merged = [...mineRanked, ...availableFiltered]
     merged.sort((a, b) => a.season_rank - b.season_rank)
 
-    return merged
+    return [...merged, ...mineUnranked]
   }, [data, position, includeWaivers])
 
   return (

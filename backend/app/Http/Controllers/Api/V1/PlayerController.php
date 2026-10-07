@@ -1301,6 +1301,94 @@ class PlayerController extends Controller
     }
 
     /**
+     * Append the overall waiver wire list onto the end of the season rankings
+     * for one scoring format. Players that already hold a season rank are
+     * skipped; the rest are added in waiver order, with position ranks
+     * continuing from each position's current maximum.
+     */
+    public function appendWaiverToSeasonRankings(Request $request): JsonResponse
+    {
+        $request->validate([
+            'ppr' => ['sometimes', 'boolean'],
+        ]);
+
+        $cols = RankingFields::columns(null, $request->boolean('ppr', true));
+        $seasonCol = $cols['season_rank'];
+        $seasonPosCol = $cols['season_position_rank'];
+        $waiverCol = $cols['waiver_rank_overall'];
+
+        $isRanked = fn ($value) => $value !== null && (int) $value >= 1 && (int) $value <= 998;
+
+        $result = DB::transaction(function () use ($seasonCol, $seasonPosCol, $waiverCol, $isRanked) {
+            $ranked = Player::query()
+                ->whereBetween($seasonCol, [1, 998])
+                ->get(['id', 'positions', $seasonCol, $seasonPosCol]);
+
+            $nextRank = (int) $ranked->max($seasonCol);
+            $nextPosRank = [];
+            foreach ($ranked as $p) {
+                $pos = $this->primaryWaiverPosition($p->positions ?? []);
+                if ($pos === null || !$isRanked($p->{$seasonPosCol})) {
+                    continue;
+                }
+                $nextPosRank[$pos] = max($nextPosRank[$pos] ?? 0, (int) $p->{$seasonPosCol});
+            }
+
+            $candidates = Player::query()
+                ->whereBetween($waiverCol, [1, 998])
+                ->orderBy($waiverCol)
+                ->orderBy('name')
+                ->get();
+
+            $appended = [];
+            $skipped = [];
+
+            foreach ($candidates as $player) {
+                if ($isRanked($player->{$seasonCol})) {
+                    $skipped[] = [
+                        'name' => $player->name,
+                        'season_rank' => (int) $player->{$seasonCol},
+                    ];
+                    continue;
+                }
+
+                $pos = $this->primaryWaiverPosition($player->positions ?? []);
+                $rank = ++$nextRank;
+                $posRank = 999;
+                if ($pos !== null) {
+                    $posRank = ($nextPosRank[$pos] ?? 0) + 1;
+                    $nextPosRank[$pos] = $posRank;
+                }
+
+                Player::query()->where('id', $player->id)->update([
+                    $seasonCol => $rank,
+                    $seasonPosCol => $posRank,
+                ]);
+
+                $appended[] = [
+                    'rank' => $rank,
+                    'name' => $player->name,
+                    'position_rank' => $pos !== null ? $pos . $posRank : null,
+                ];
+            }
+
+            return [
+                'appended' => $appended,
+                'skipped' => $skipped,
+                'waiver_total' => $candidates->count(),
+            ];
+        });
+
+        return response()->json([
+            'appended' => count($result['appended']),
+            'skipped' => count($result['skipped']),
+            'waiver_total' => $result['waiver_total'],
+            'appended_players' => $result['appended'],
+            'skipped_players' => $result['skipped'],
+        ]);
+    }
+
+    /**
      * First stored position that has its own waiver ranking list.
      */
     private function primaryWaiverPosition(array $positions): ?string

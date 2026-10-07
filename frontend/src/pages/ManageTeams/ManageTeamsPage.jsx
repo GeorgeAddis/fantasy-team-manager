@@ -47,8 +47,10 @@ import OptimalLineupPanel, { LineupChangesView, WeekRank } from './OptimalLineup
 
 const POSITION_COLORS = {
   QB: '#e57373',
+  RB: '#64b5f6',
   RB1: '#64b5f6',
   RB2: '#64b5f6',
+  WR: '#81c784',
   WR1: '#81c784',
   WR2: '#81c784',
   WR3: '#81c784',
@@ -56,6 +58,28 @@ const POSITION_COLORS = {
   FLEX: '#ce93d8',
   K: '#a1887f',
   DST: '#90a4ae',
+}
+
+const BASE_POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+
+function basePosition(player) {
+  return (player?.positions ?? []).find((p) => BASE_POSITIONS.includes(p)) ?? null
+}
+
+function seasonRankValue(player) {
+  const rank = player?.season_rank
+  if (rank == null || rank <= 0 || rank >= 999) return 10000
+  return rank
+}
+
+function compareBenchSlots(a, b) {
+  const posRank = (slot) => {
+    const index = BASE_POSITIONS.indexOf(basePosition(slot.player))
+    return index === -1 ? BASE_POSITIONS.length : index
+  }
+  const posCmp = posRank(a) - posRank(b)
+  if (posCmp !== 0) return posCmp
+  return seasonRankValue(a.player) - seasonRankValue(b.player)
 }
 
 const AVAILABLE_FILTERS = ['FA', 'FA + WW']
@@ -376,6 +400,14 @@ export default function ManageTeamsPage() {
 
   function RosterRow({ slot }) {
     const player = slot.player
+    const isBench = slot.lineup_position === 'BN'
+    const benchPos = isBench ? basePosition(player) : null
+    const posLabel = isBench
+      ? (benchPos ?? '—')
+      : (SLOT_LABELS[slot.lineup_position] ?? slot.lineup_position)
+    const posColor = isBench
+      ? (POSITION_COLORS[benchPos] ?? '#616161')
+      : (POSITION_COLORS[slot.lineup_position] ?? '#616161')
     const bgColor = player ? byeRowColor(player.bye_week) : undefined
     return (
       <Box
@@ -392,14 +424,14 @@ export default function ManageTeamsPage() {
         }}
       >
         <Chip
-          label={SLOT_LABELS[slot.lineup_position] ?? slot.lineup_position}
+          label={posLabel}
           size="small"
           sx={{
             width: 48,
             height: 22,
             fontWeight: 700,
             fontSize: '0.65rem',
-            bgcolor: POSITION_COLORS[slot.lineup_position] ?? '#616161',
+            bgcolor: posColor,
             color: '#fff',
           }}
         />
@@ -448,7 +480,7 @@ export default function ManageTeamsPage() {
   function renderRosterPanel() {
     const rosterSlots = rosterPanelData?.data ?? []
     const starters = rosterSlots.filter((s) => STARTER_POSITIONS.includes(s.lineup_position))
-    const bench = rosterSlots.filter((s) => s.lineup_position === 'BN')
+    const bench = rosterSlots.filter((s) => s.lineup_position === 'BN').sort(compareBenchSlots)
 
     return (
       <Box>
@@ -600,7 +632,7 @@ export default function ManageTeamsPage() {
 
     if (showThursday) {
       const step = thursdayTarget.step
-      const STEP_LABELS = ['Lineup Changes', 'Roster Moves', 'Roster Optimisation']
+      const STEP_LABELS = ['Roster Moves', 'Lineup Changes', 'Roster Optimisation']
       const liveThursday = rows.find((r) => r.myTeam.id === thursdayTarget.myTeam.id)
       const thursdayRosterAdd = liveThursday?.thursdayRosterAdd ?? thursdayTarget.rosterAdd
       const suggestedChanges = (liveThursday?.analysis ?? thursdayTarget.analysis)?.suggested_changes ?? []
@@ -657,8 +689,8 @@ export default function ManageTeamsPage() {
             </Box>
           </Box>
 
-          {/* Step 0: Lineup Changes */}
-          {step === 0 && (
+          {/* Step 1: Lineup Changes */}
+          {step === 1 && (
             <LineupChangesView
               changes={suggestedChanges}
               lineup={(liveThursday?.analysis ?? thursdayTarget.analysis)?.optimal_lineup}
@@ -666,8 +698,8 @@ export default function ManageTeamsPage() {
             />
           )}
 
-          {/* Step 1: Roster Moves */}
-          {step === 1 && (
+          {/* Step 0: Roster Moves */}
+          {step === 0 && (
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 3 }}>
               <Box>
                 <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>

@@ -4,8 +4,10 @@ import ErrorIcon from '@mui/icons-material/Error'
 
 const POSITION_COLORS = {
   QB: '#e57373',
+  RB: '#64b5f6',
   RB1: '#64b5f6',
   RB2: '#64b5f6',
+  WR: '#81c784',
   WR1: '#81c784',
   WR2: '#81c784',
   WR3: '#81c784',
@@ -15,6 +17,28 @@ const POSITION_COLORS = {
   K: '#a1887f',
   DST: '#90a4ae',
   BN: '#616161',
+}
+
+const BASE_POSITIONS = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+
+function basePosition(player) {
+  return (player?.positions ?? []).find((p) => BASE_POSITIONS.includes(p)) ?? null
+}
+
+function seasonRankValue(player) {
+  const rank = player?.season_rank
+  if (rank == null || rank <= 0 || rank >= 999) return 10000
+  return rank
+}
+
+function compareBenchSlots(a, b) {
+  const posRank = (slot) => {
+    const index = BASE_POSITIONS.indexOf(basePosition(slot.player))
+    return index === -1 ? BASE_POSITIONS.length : index
+  }
+  const posCmp = posRank(a) - posRank(b)
+  if (posCmp !== 0) return posCmp
+  return seasonRankValue(a.player) - seasonRankValue(b.player)
 }
 
 const SLOT_LABELS = {
@@ -47,6 +71,14 @@ function byeRowColor(byeWeek, currentWeek) {
 
 function LineupRow({ slot, currentWeek }) {
   const player = slot.player
+  const isBench = slot.lineup_position === 'BN'
+  const benchPos = isBench ? basePosition(player) : null
+  const posLabel = isBench
+    ? (benchPos ?? '—')
+    : (SLOT_LABELS[slot.lineup_position] ?? slot.lineup_position)
+  const posColor = isBench
+    ? (POSITION_COLORS[benchPos] ?? '#616161')
+    : (POSITION_COLORS[slot.lineup_position] ?? '#616161')
   const bgColor = player ? byeRowColor(player.bye_week, currentWeek) : undefined
   return (
     <Box
@@ -63,14 +95,14 @@ function LineupRow({ slot, currentWeek }) {
       }}
     >
       <Chip
-        label={SLOT_LABELS[slot.lineup_position] ?? slot.lineup_position}
+        label={posLabel}
         size="small"
         sx={{
           width: 48,
           height: 22,
           fontWeight: 700,
           fontSize: '0.65rem',
-          bgcolor: POSITION_COLORS[slot.lineup_position] ?? '#616161',
+          bgcolor: posColor,
           color: '#fff',
         }}
       />
@@ -289,7 +321,7 @@ export function LineupChangesView({
 
 export default function OptimalLineupPanel({ lineup, currentWeek = 0, title = 'Optimal Lineup' }) {
   const starters = lineup?.starters ?? []
-  const bench = lineup?.bench ?? []
+  const bench = [...(lineup?.bench ?? [])].sort(compareBenchSlots)
   const empty = starters.length === 0 && bench.length === 0
 
   return (
