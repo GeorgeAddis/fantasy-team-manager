@@ -53,17 +53,18 @@ export function importRankings(data, type, period, ppr = true, applyBoth = true)
   })
 }
 
-export function importSeasonRankings({ file, data, ppr = true, apply_both = true } = {}) {
+export function importSeasonRankings({ file, data, ppr = true, apply_both = true, append = false } = {}) {
   if (file) {
     const form = new FormData()
     form.append('file', file)
     form.append('ppr', ppr ? '1' : '0')
     form.append('apply_both', apply_both ? '1' : '0')
+    form.append('append', append ? '1' : '0')
     return apiFetch(`${path}/import-season-rankings`, { method: 'POST', body: form })
   }
   return apiFetch(`${path}/import-season-rankings`, {
     method: 'POST',
-    body: { data, ppr, apply_both },
+    body: { data, ppr, apply_both, append },
   })
 }
 

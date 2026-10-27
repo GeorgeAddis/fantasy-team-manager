@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\PlayerStoreRequest;
 use App\Http\Requests\Api\V1\PlayerUpdateRequest;
 use App\Http\Resources\PlayerResource;
 use App\Models\IrlFranchise;
+use App\Models\LeaguePlayerStatus;
 use App\Models\Player;
 use App\Support\DefenseNameLookup;
 use App\Support\RankingFields;
@@ -173,6 +174,17 @@ class PlayerController extends Controller
             // League IDs where the player IS rostered (on any team, not just mine)
             $rosteredLeagueIds = $results->pluck('league_id')->unique()->toArray();
 
+            // Leagues where a matched player sits on waivers (same source as FA alerts).
+            // Anything without a WW row is treated as a free agent.
+            $waiverLeagueIds = LeaguePlayerStatus::query()
+                ->whereIn('league_id', $leagueIds)
+                ->whereIn('player_id', $playerIds)
+                ->where('status', 'WW')
+                ->pluck('league_id')
+                ->unique()
+                ->flip()
+                ->all();
+
             // For each league not already showing the player on my team,
             // check if the player is rostered on ANY team in that league
             foreach ($allLeagues as $league) {
@@ -192,6 +204,7 @@ class PlayerController extends Controller
                         'league_name' => $league->name,
                         'team_id'     => $myTeam?->id,
                         'team_name'   => $myTeam?->name,
+                        'status'      => isset($waiverLeagueIds[$league->id]) ? 'WW' : 'FA',
                     ];
                 }
             }
@@ -908,29 +921,45 @@ class PlayerController extends Controller
     }
 
     /**
-     * Import season rankings from an ETR-style CSV upload or pasted CSV/TSV text.
+     * Import season rankings from an ETR-style CSV upload (file) or pasted plain
+     * text with one player name per line (data), where line position = rank.
      *
-     * Required columns: Player, and Rank (aliases: ETR Rank, 1QB Rank)
+     * CSV required columns: Player, and Rank (aliases: ETR Rank, 1QB Rank)
      * Helpful: Pos / Position, Team (DST matching), PosRank (aliases: ETR Pos Rank, 1QB Pos Rk)
      * If pos rank is missing, it is derived from overall rank within each position.
+     * With append=1 the existing ranks are kept and the rows are added after the
+     * current last rank in list order (see appendSeasonRankings).
      */
     public function importSeasonRankings(Request $request): JsonResponse
     {
         $request->validate([
             'file' => ['nullable', 'file', 'mimes:csv,txt', 'max:5120'],
-            'data' => ['nullable', 'string', 'min:5'],
+            'data' => ['nullable', 'string', 'min:2'],
             'ppr' => ['sometimes', 'boolean'],
             'apply_both' => ['sometimes', 'boolean'],
+            'append' => ['sometimes', 'boolean'],
         ]);
 
+        $isPpr = $request->boolean('ppr', true);
         $applyBoth = $request->boolean('apply_both', true);
-        $rankCols = RankingFields::columns(null, $request->boolean('ppr', true));
+        $append = $request->boolean('append', false);
+        $rankCols = RankingFields::columns(null, $isPpr);
 
         if (!$request->hasFile('file') && !$request->filled('data')) {
             return response()->json([
-                'message' => 'Provide a CSV file or pasted ranking data.',
+                'message' => 'Provide a CSV file or paste player names.',
             ], 422);
         }
+
+        $allPlayers = Player::all();
+        $playerByName = [];
+        foreach ($allPlayers as $p) {
+            $playerByName[$this->normalizePlayerName($p->name)] = $p;
+            if ($p->alternate_name) {
+                $playerByName[$this->normalizePlayerName($p->alternate_name)] = $p;
+            }
+        }
+        $dstLookup = $this->buildDstFranchiseLookup();
 
         if ($request->hasFile('file')) {
             $handle = fopen($request->file('file')->getRealPath(), 'r');
@@ -942,12 +971,105 @@ class PlayerController extends Controller
                 $table[] = $row;
             }
             fclose($handle);
+            $parsed = $this->parseSeasonRankingsCsv($table, $playerByName, $dstLookup);
         } else {
-            $table = $this->parseDelimitedText($request->input('data'));
+            $parsed = $this->parseSeasonRankingsNames($request->input('data'), $playerByName, $dstLookup);
         }
 
+        if (isset($parsed['error'])) {
+            return response()->json(['message' => $parsed['error']], 422);
+        }
+
+        $pending = $parsed['pending'];
+        $notFound = $parsed['not_found'];
+        $totalLines = $parsed['total_lines'];
+
+        // Derive missing position ranks from overall order within each position
+        $byPos = [];
+        foreach ($pending as $i => $row) {
+            if ($row['pos_rank'] !== null) {
+                continue;
+            }
+            $key = $row['position'] !== '' ? $row['position'] : '_';
+            $byPos[$key][] = $i;
+        }
+        foreach ($byPos as $indexes) {
+            usort($indexes, fn ($a, $b) => $pending[$a]['season_rank'] <=> $pending[$b]['season_rank']);
+            foreach ($indexes as $n => $i) {
+                $pending[$i]['pos_rank'] = $n + 1;
+            }
+        }
+
+        if ($append) {
+            $result = $this->appendSeasonRankings($pending, $applyBoth, $isPpr);
+
+            return response()->json([
+                'mode' => 'append',
+                'updated' => count($result['appended']),
+                'appended' => count($result['appended']),
+                'skipped' => count($result['skipped']),
+                'appended_players' => $result['appended'],
+                'skipped_players' => $result['skipped'],
+                'not_found' => $notFound,
+                'total_lines' => $totalLines,
+            ]);
+        }
+
+        $updated = 0;
+        $cleared = 0;
+        $seasonCol = $rankCols['season_rank'];
+        $seasonPosCol = $rankCols['season_position_rank'];
+
+        DB::transaction(function () use ($pending, &$updated, &$cleared, $seasonCol, $seasonPosCol, $applyBoth) {
+            $wipe = [
+                $seasonCol => 999,
+                $seasonPosCol => 999,
+            ];
+            if ($applyBoth) {
+                $wipe = RankingFields::applyToBothScoringFormats($wipe);
+            }
+            // Full overwrite for this scoring format (and the other set when apply_both).
+            // Use query builder updates (not model->update) so ranks that happen to
+            // match the pre-wipe in-memory values are still written after the wipe.
+            $cleared = Player::query()->update($wipe);
+
+            foreach ($pending as $row) {
+                $fields = [
+                    $seasonCol => $row['season_rank'],
+                    $seasonPosCol => $row['pos_rank'] ?? 999,
+                ];
+                if (RankingFields::isScoringIndependent($row['player']->positions ?? [], $row['position'] ?? null)) {
+                    $fields = RankingFields::mirrorScoringIndependent($fields);
+                }
+                if ($applyBoth) {
+                    $fields = RankingFields::applyToBothScoringFormats($fields);
+                }
+                Player::query()->where('id', $row['player']->id)->update($fields);
+                $updated++;
+            }
+        });
+
+        return response()->json([
+            'mode' => 'overwrite',
+            'updated' => $updated,
+            'cleared' => $cleared,
+            'not_found' => $notFound,
+            'total_lines' => $totalLines,
+        ]);
+    }
+
+    /**
+     * Parse an ETR-style CSV table (header row + data rows) into pending
+     * season ranking rows.
+     *
+     * @param  array<string, Player>  $playerByName  normalized name => player
+     * @param  array<string, Player>  $dstLookup     uppercased franchise alias => DST player
+     * @return array{pending: list<array<string, mixed>>, not_found: list<array<string, mixed>>, total_lines: int}|array{error: string}
+     */
+    private function parseSeasonRankingsCsv(array $table, array $playerByName, array $dstLookup): array
+    {
         if (count($table) < 2) {
-            return response()->json(['message' => 'No ranking rows found.'], 422);
+            return ['error' => 'No ranking rows found.'];
         }
 
         $header = array_shift($table);
@@ -972,20 +1094,8 @@ class PlayerController extends Controller
         ]);
 
         if ($playerCol === null || $rankCol === null) {
-            return response()->json([
-                'message' => 'CSV must include "Player" and a rank column ("Rank", "ETR Rank", or "1QB Rank").',
-            ], 422);
+            return ['error' => 'CSV must include "Player" and a rank column ("Rank", "ETR Rank", or "1QB Rank").'];
         }
-
-        $allPlayers = Player::all();
-        $playerByName = [];
-        foreach ($allPlayers as $p) {
-            $playerByName[$this->normalizePlayerName($p->name)] = $p;
-            if ($p->alternate_name) {
-                $playerByName[$this->normalizePlayerName($p->alternate_name)] = $p;
-            }
-        }
-        $dstLookup = $this->buildDstFranchiseLookup();
 
         $pending = [];
         $notFound = [];
@@ -1042,85 +1152,163 @@ class PlayerController extends Controller
             ];
         }
 
-        // Derive missing position ranks from overall order within each position
-        $byPos = [];
-        foreach ($pending as $i => $row) {
-            if ($row['pos_rank'] !== null) {
-                continue;
-            }
-            $key = $row['position'] !== '' ? $row['position'] : '_';
-            $byPos[$key][] = $i;
-        }
-        foreach ($byPos as $indexes) {
-            usort($indexes, fn ($a, $b) => $pending[$a]['season_rank'] <=> $pending[$b]['season_rank']);
-            foreach ($indexes as $n => $i) {
-                $pending[$i]['pos_rank'] = $n + 1;
-            }
-        }
-
-        $updated = 0;
-        $cleared = 0;
-        $seasonCol = $rankCols['season_rank'];
-        $seasonPosCol = $rankCols['season_position_rank'];
-
-        DB::transaction(function () use ($pending, &$updated, &$cleared, $seasonCol, $seasonPosCol, $applyBoth) {
-            $wipe = [
-                $seasonCol => 999,
-                $seasonPosCol => 999,
-            ];
-            if ($applyBoth) {
-                $wipe = RankingFields::applyToBothScoringFormats($wipe);
-            }
-            // Full overwrite for this scoring format (and the other set when apply_both).
-            // Use query builder updates (not model->update) so ranks that happen to
-            // match the pre-wipe in-memory values are still written after the wipe.
-            $cleared = Player::query()->update($wipe);
-
-            foreach ($pending as $row) {
-                $fields = [
-                    $seasonCol => $row['season_rank'],
-                    $seasonPosCol => $row['pos_rank'] ?? 999,
-                ];
-                if (RankingFields::isScoringIndependent($row['player']->positions ?? [], $row['position'] ?? null)) {
-                    $fields = RankingFields::mirrorScoringIndependent($fields);
-                }
-                if ($applyBoth) {
-                    $fields = RankingFields::applyToBothScoringFormats($fields);
-                }
-                Player::query()->where('id', $row['player']->id)->update($fields);
-                $updated++;
-            }
-        });
-
-        return response()->json([
-            'updated' => $updated,
-            'cleared' => $cleared,
-            'not_found' => $notFound,
-            'total_lines' => count($table),
-        ]);
+        return ['pending' => $pending, 'not_found' => $notFound, 'total_lines' => count($table)];
     }
 
     /**
-     * Split pasted CSV/TSV text into rows of cells.
+     * Parse pasted plain text (one player name per line) into pending season
+     * ranking rows. Line position = rank, as with waiver imports; leading
+     * numbering like "1." or "2)" is stripped. Position rank is derived
+     * afterwards from order within each player's primary position.
+     *
+     * @param  array<string, Player>  $playerByName  normalized name => player
+     * @param  array<string, Player>  $dstLookup     uppercased franchise alias => DST player
+     * @return array{pending: list<array<string, mixed>>, not_found: list<array<string, mixed>>, total_lines: int}|array{error: string}
      */
-    private function parseDelimitedText(string $data): array
+    private function parseSeasonRankingsNames(string $data, array $playerByName, array $dstLookup): array
     {
         $lines = preg_split('/\r\n|\r|\n/', $data) ?: [];
-        $lines = array_values(array_filter(
-            array_map(fn ($l) => rtrim($l, "\r"), $lines),
-            fn ($l) => trim($l) !== ''
-        ));
+        $lines = array_map(fn ($l) => trim(preg_replace('/^\d+[\.\)]\s*/', '', trim($l))), $lines);
+        $lines = array_values(array_filter($lines, fn ($l) => $l !== ''));
 
         if ($lines === []) {
-            return [];
+            return ['error' => 'No player names found.'];
         }
 
-        $first = $lines[0];
-        $tabCount = substr_count($first, "\t");
-        $commaCount = substr_count($first, ',');
-        $delimiter = $tabCount >= $commaCount ? "\t" : ',';
+        $pending = [];
+        $notFound = [];
+        $seenPlayerIds = [];
 
-        return array_map(fn ($line) => str_getcsv($line, $delimiter), $lines);
+        foreach ($lines as $idx => $name) {
+            $rank = $idx + 1;
+            $player = $playerByName[$this->normalizePlayerName($name)]
+                ?? $dstLookup[strtoupper($name)]
+                ?? null;
+
+            if (!$player) {
+                $notFound[] = ['rank' => $rank, 'name' => $name, 'position' => ''];
+                continue;
+            }
+
+            if (isset($seenPlayerIds[$player->id])) {
+                continue;
+            }
+            $seenPlayerIds[$player->id] = true;
+
+            $pending[] = [
+                'player' => $player,
+                'season_rank' => $rank,
+                'pos_rank' => null,
+                'position' => $this->primaryWaiverPosition($player->positions ?? []) ?? '',
+            ];
+        }
+
+        return ['pending' => $pending, 'not_found' => $notFound, 'total_lines' => count($lines)];
+    }
+
+    /**
+     * Append imported rows to the end of the season rankings instead of
+     * replacing them. Rows are added in list order after the current last
+     * rank; players that already hold a season rank are skipped. When
+     * apply_both is set, PPR and non-PPR each continue from their own
+     * current maximum, so the two sets can diverge if they were imported
+     * separately.
+     *
+     * @param  list<array{player: Player, season_rank: int, position: string}>  $pending
+     * @return array{appended: list<array<string, mixed>>, skipped: list<array<string, mixed>>}
+     */
+    private function appendSeasonRankings(array $pending, bool $applyBoth, bool $ppr): array
+    {
+        usort($pending, fn ($a, $b) => $a['season_rank'] <=> $b['season_rank']);
+
+        $primary = $ppr ? 'ppr' : 'non_ppr';
+        $formats = $applyBoth ? ['ppr' => true, 'non_ppr' => false] : [$primary => $ppr];
+        $isRanked = fn ($value) => $value !== null && (int) $value >= 1 && (int) $value <= 998;
+
+        return DB::transaction(function () use ($pending, $formats, $primary, $applyBoth, $isRanked) {
+            $state = [];
+            foreach ($formats as $key => $format) {
+                $cols = RankingFields::columns(null, $format);
+                $seasonCol = $cols['season_rank'];
+                $seasonPosCol = $cols['season_position_rank'];
+
+                $ranked = Player::query()
+                    ->whereBetween($seasonCol, [1, 998])
+                    ->get(['id', 'positions', $seasonCol, $seasonPosCol]);
+
+                $nextPosRank = [];
+                foreach ($ranked as $p) {
+                    $pos = $this->primaryWaiverPosition($p->positions ?? []);
+                    if ($pos === null || !$isRanked($p->{$seasonPosCol})) {
+                        continue;
+                    }
+                    $nextPosRank[$pos] = max($nextPosRank[$pos] ?? 0, (int) $p->{$seasonPosCol});
+                }
+
+                $state[$key] = [
+                    'season_col' => $seasonCol,
+                    'season_pos_col' => $seasonPosCol,
+                    'next_rank' => (int) $ranked->max($seasonCol),
+                    'next_pos_rank' => $nextPosRank,
+                    'existing' => $ranked->pluck($seasonCol, 'id')->all(),
+                ];
+            }
+
+            $appended = [];
+            $skipped = [];
+
+            foreach ($pending as $row) {
+                $player = $row['player'];
+                $pos = $this->primaryWaiverPosition($player->positions ?? [])
+                    ?? $this->primaryWaiverPosition([(string) ($row['position'] ?? '')]);
+
+                $fields = [];
+                $primaryRank = null;
+                $primaryPosRank = null;
+
+                foreach ($state as $key => &$s) {
+                    if (isset($s['existing'][$player->id])) {
+                        continue;
+                    }
+                    $rank = ++$s['next_rank'];
+                    $posRank = 999;
+                    if ($pos !== null) {
+                        $posRank = ($s['next_pos_rank'][$pos] ?? 0) + 1;
+                        $s['next_pos_rank'][$pos] = $posRank;
+                    }
+                    $fields[$s['season_col']] = $rank;
+                    $fields[$s['season_pos_col']] = $posRank;
+                    if ($key === $primary) {
+                        $primaryRank = $rank;
+                        $primaryPosRank = $posRank;
+                    }
+                }
+                unset($s);
+
+                if ($fields !== []) {
+                    if (!$applyBoth && RankingFields::isScoringIndependent($player->positions ?? [], $row['position'] ?? null)) {
+                        $fields = RankingFields::mirrorScoringIndependent($fields);
+                    }
+                    Player::query()->where('id', $player->id)->update($fields);
+                }
+
+                if ($primaryRank === null) {
+                    $skipped[] = [
+                        'name' => $player->name,
+                        'season_rank' => (int) $state[$primary]['existing'][$player->id],
+                    ];
+                    continue;
+                }
+
+                $appended[] = [
+                    'rank' => $primaryRank,
+                    'name' => $player->name,
+                    'position_rank' => $pos !== null ? $pos . $primaryPosRank : null,
+                ];
+            }
+
+            return ['appended' => $appended, 'skipped' => $skipped];
+        });
     }
 
     private function normalizeCsvHeader(string $header): string

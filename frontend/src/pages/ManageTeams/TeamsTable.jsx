@@ -156,7 +156,7 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
         component={Paper}
         elevation={0}
         sx={{
-          maxWidth: (isLineupChange || isRosterMoves || isRosterOpt || isThursdayUpdate) ? 960 : 800,
+          maxWidth: isRosterMoves ? 1040 : (isLineupChange || isRosterOpt || isThursdayUpdate) ? 960 : 800,
           width: '100%',
           border: '1px solid',
           borderColor: 'divider',
@@ -172,6 +172,7 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
               {isRosterOpt && <TableCell sx={HEAD_CELL}>Optimise Roster</TableCell>}
               {isThursdayUpdate && <TableCell sx={HEAD_CELL}>Thursday Update</TableCell>}
               <TableCell sx={HEAD_CELL}>Roster</TableCell>
+              {isRosterMoves && <TableCell sx={HEAD_CELL}>Optimise Roster</TableCell>}
               <TableCell sx={HEAD_CELL}>Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -283,6 +284,25 @@ export default function TeamsTable({ rows, isLoading, variant, onMakeClaims, onM
                     </Button>
                   )}
                 </TableCell>
+                {isRosterMoves && (
+                  <TableCell>
+                    {myTeam && (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<TuneIcon />}
+                        onClick={() => onOptimise?.({ league, myTeam, from: 'require-roster-moves' })}
+                        sx={{
+                          textTransform: 'none',
+                          bgcolor: 'primary.main',
+                          '&:hover': { bgcolor: 'primary.dark' },
+                        }}
+                      >
+                        Optimise
+                      </Button>
+                    )}
+                  </TableCell>
+                )}
                 <TableCell>
                   {isWaiverClaims ? (
                     <Button

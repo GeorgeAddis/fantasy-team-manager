@@ -632,7 +632,7 @@ export default function ManageTeamsPage() {
 
     if (showThursday) {
       const step = thursdayTarget.step
-      const STEP_LABELS = ['Roster Moves', 'Lineup Changes', 'Roster Optimisation']
+      const STEP_LABELS = ['Lineup Changes', 'Roster Moves', 'Roster Optimisation']
       const liveThursday = rows.find((r) => r.myTeam.id === thursdayTarget.myTeam.id)
       const thursdayRosterAdd = liveThursday?.thursdayRosterAdd ?? thursdayTarget.rosterAdd
       const suggestedChanges = (liveThursday?.analysis ?? thursdayTarget.analysis)?.suggested_changes ?? []
@@ -689,8 +689,8 @@ export default function ManageTeamsPage() {
             </Box>
           </Box>
 
-          {/* Step 1: Lineup Changes */}
-          {step === 1 && (
+          {/* Step 0: Lineup Changes */}
+          {step === 0 && (
             <LineupChangesView
               changes={suggestedChanges}
               lineup={(liveThursday?.analysis ?? thursdayTarget.analysis)?.optimal_lineup}
@@ -698,8 +698,8 @@ export default function ManageTeamsPage() {
             />
           )}
 
-          {/* Step 0: Roster Moves */}
-          {step === 0 && (
+          {/* Step 1: Roster Moves */}
+          {step === 1 && (
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 3 }}>
               <Box>
                 <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>

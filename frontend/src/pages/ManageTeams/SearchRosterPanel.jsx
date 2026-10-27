@@ -10,7 +10,10 @@ import SearchIcon from '@mui/icons-material/Search'
 import ListAltIcon from '@mui/icons-material/ListAlt'
 import TuneIcon from '@mui/icons-material/Tune'
 import { useSearchMyTeams } from '@/hooks/usePlayers'
+import PositionToggle from '@/components/PositionToggle'
 import RosterDialog from '@/components/RosterDialog'
+
+const STATUS_FILTERS = ['FA', 'FA + WW']
 
 const LINEUP_LABEL = {
   QB: 'QB',
@@ -37,6 +40,15 @@ const CELL_SX = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
+}
+
+const STATUS_SX = {
+  fontFamily: 'monospace',
+  fontWeight: 700,
+}
+
+function statusLabel(status) {
+  return status === 'WW' ? 'Waivers' : 'FA'
 }
 
 function OptimiseButton({ row, onOptimise }) {
@@ -200,6 +212,7 @@ export default function SearchRosterPanel({
   const [localInput, setLocalInput] = useState('')
   const [localSearch, setLocalSearch] = useState('')
   const [rosterTarget, setRosterTarget] = useState(null)
+  const [statusFilter, setStatusFilter] = useState('FA')
   const input = inputProp ?? localInput
   const search = searchProp ?? localSearch
   const setInput = onInputChange ?? setLocalInput
@@ -210,10 +223,15 @@ export default function SearchRosterPanel({
   )
 
   const results = data?.results ?? []
-  const availableLeagues = data?.available_leagues ?? []
+  const allAvailableLeagues = data?.available_leagues ?? []
   const status = data?.status ?? null
   const matchedNames = data?.matched_names ?? []
   const isPlayer = type === 'player'
+
+  const availableLeagues = statusFilter === 'FA'
+    ? allAvailableLeagues.filter((l) => l.status !== 'WW')
+    : allAvailableLeagues
+  const waiverOnlyCount = allAvailableLeagues.length - availableLeagues.length
 
   function handleSubmit(e) {
     e.preventDefault()
@@ -228,9 +246,18 @@ export default function SearchRosterPanel({
 
   return (
     <Box>
-      <Typography variant="h6" fontWeight={700} sx={{ mb: 2.5, color: 'text.primary' }}>
-        {title}
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5, gap: 2, flexWrap: 'wrap' }}>
+        <Typography variant="h6" fontWeight={700} sx={{ color: 'text.primary' }}>
+          {title}
+        </Typography>
+        {isPlayer && (
+          <PositionToggle
+            value={statusFilter}
+            onChange={setStatusFilter}
+            positions={STATUS_FILTERS}
+          />
+        )}
+      </Box>
 
       <form onSubmit={handleSubmit}>
         <Box sx={{ display: 'flex', gap: 1, mb: 2.5 }}>
@@ -300,14 +327,16 @@ export default function SearchRosterPanel({
             </Typography>
             {availableLeagues.length === 0 ? (
               <Typography variant="body2" color="text.secondary">
-                Not available in any other leagues.
+                {waiverOnlyCount > 0
+                  ? `Only on waivers in ${waiverOnlyCount} league${waiverOnlyCount === 1 ? '' : 's'}. Switch to FA + WW to show.`
+                  : 'Not available in any other leagues.'}
               </Typography>
             ) : (
               <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, overflow: 'hidden' }}>
                 <Box
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: onOptimise ? '1fr 140px 130px 110px' : '1fr 140px 130px',
+                    gridTemplateColumns: onOptimise ? '1fr 140px 72px 130px 110px' : '1fr 140px 72px 130px',
                     px: 1.5,
                     py: 0.75,
                     bgcolor: 'background.paper',
@@ -317,6 +346,7 @@ export default function SearchRosterPanel({
                 >
                   <Typography sx={HEADER_SX}>League</Typography>
                   <Typography sx={HEADER_SX}>Team</Typography>
+                  <Typography sx={HEADER_SX}>Status</Typography>
                   <Typography sx={HEADER_SX}>Roster</Typography>
                   {onOptimise && <Typography sx={HEADER_SX}>Optimise</Typography>}
                 </Box>
@@ -326,7 +356,7 @@ export default function SearchRosterPanel({
                       key={l.league_id}
                       sx={{
                         display: 'grid',
-                        gridTemplateColumns: onOptimise ? '1fr 140px 130px 110px' : '1fr 140px 130px',
+                        gridTemplateColumns: onOptimise ? '1fr 140px 72px 130px 110px' : '1fr 140px 72px 130px',
                         px: 1.5,
                         py: 0.5,
                         borderBottom: '1px solid',
@@ -339,6 +369,15 @@ export default function SearchRosterPanel({
                       </Typography>
                       <Typography variant="body2" sx={{ ...CELL_SX, color: 'text.secondary' }}>
                         {l.team_name}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          ...STATUS_SX,
+                          color: l.status === 'WW' ? 'warning.main' : 'success.main',
+                        }}
+                      >
+                        {statusLabel(l.status)}
                       </Typography>
                       <Box>
                         <ViewRosterButton row={l} onViewRoster={setRosterTarget} />
